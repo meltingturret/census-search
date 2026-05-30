@@ -416,25 +416,26 @@ async def _do_link(
 def browse(
     county: str = typer.Option("", "--county", "-c", help="County to browse"),
     ded: str = typer.Option("", "--ded", "-d", help="DED to browse"),
+    max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
     headless: bool = typer.Option(True, "--headless/--no-headless"),
 ):
     """Browse 1926 census records by county and DED (no name required)."""
-    asyncio.run(_do_browse(county=county, ded=ded, headless=headless))
+    asyncio.run(_do_browse(county=county, ded=ded, max_results=max_results, headless=headless))
 
 
-async def _do_browse(county: str, ded: str, headless: bool):
+async def _do_browse(county: str, ded: str, max_results: int, headless: bool):
     console.print("\n[bold]📂 Browsing 1926 census[/bold]"
                   + (f" — [yellow]{county}[/yellow]" if county else ""))
 
     async with Census1926Searcher(headless=headless) as searcher:
         with console.status("Loading…"):
-            result = await searcher.search(county=county, ded=ded, max_results=50)
+            result = await searcher.search(county=county, ded=ded, max_results=max_results)
 
     if not result.records:
         console.print("[red]No results found.[/red]")
         raise typer.Exit(1)
 
-    console.print(f"\n[green]{result.total} record(s)[/green]")
+    console.print(f"\n[green]{result.total} record(s) — showing {len(result.records)}[/green]")
     console.print(_record_table(result.records, f"1926 Census — {county or 'All Counties'}"))
 
 

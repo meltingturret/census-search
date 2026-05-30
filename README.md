@@ -152,12 +152,14 @@ If the target person is not in 1926 (e.g. away on military service), the first s
 ```bash
 poetry run census-search browse --county Dublin
 poetry run census-search browse --county Kerry --ded "Tralee Urban"
+poetry run census-search browse --county Kilkenny --max 100
 ```
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--county` | `-c` | County to browse |
-| `--ded` | `-d` | District Electoral Division |
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--county` | `-c` | | County to browse |
+| `--ded` | `-d` | | District Electoral Division |
+| `--max` | `-n` | 30 | Max results to return |
 
 ---
 
