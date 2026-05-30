@@ -477,3 +477,36 @@ class TestBrowseCommand:
         with patch("census_search.cli.Census1926Searcher", return_value=mock_1926):
             result = runner.invoke(app, ["browse", "--county", "Kilkenny"])
         assert result.exit_code == 1
+
+    def test_surname_argument_passed_to_searcher(self):
+        """browse Corrigan --county Kilkenny passes surname to the searcher."""
+        mock_1926 = AsyncMock()
+        mock_1926.__aenter__ = AsyncMock(return_value=mock_1926)
+        mock_1926.__aexit__ = AsyncMock(return_value=False)
+        mock_1926.search = AsyncMock(return_value=_make_result(1926, [_corrigan_1926()]))
+        with patch("census_search.cli.Census1926Searcher", return_value=mock_1926):
+            result = runner.invoke(app, ["browse", "Corrigan", "--county", "Kilkenny"])
+        assert result.exit_code == 0
+        call_kwargs = mock_1926.search.call_args.kwargs
+        assert call_kwargs.get("surname") == "Corrigan"
+        assert call_kwargs.get("county") == "Kilkenny"
+
+    def test_surname_shown_in_output(self):
+        """Surname appears in the browse header when provided."""
+        mock_1926 = AsyncMock()
+        mock_1926.__aenter__ = AsyncMock(return_value=mock_1926)
+        mock_1926.__aexit__ = AsyncMock(return_value=False)
+        mock_1926.search = AsyncMock(return_value=_make_result(1926, [_corrigan_1926()]))
+        with patch("census_search.cli.Census1926Searcher", return_value=mock_1926):
+            result = runner.invoke(app, ["browse", "Corrigan", "--county", "Kilkenny"])
+        assert "Corrigan" in result.output
+
+    def test_max_passed_to_searcher(self):
+        """--max is forwarded to searcher as max_results."""
+        mock_1926 = AsyncMock()
+        mock_1926.__aenter__ = AsyncMock(return_value=mock_1926)
+        mock_1926.__aexit__ = AsyncMock(return_value=False)
+        mock_1926.search = AsyncMock(return_value=_make_result(1926, [_corrigan_1926()]))
+        with patch("census_search.cli.Census1926Searcher", return_value=mock_1926):
+            runner.invoke(app, ["browse", "--county", "Kilkenny", "--max", "100"])
+        assert mock_1926.search.call_args.kwargs.get("max_results") == 100
