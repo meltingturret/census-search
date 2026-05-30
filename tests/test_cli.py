@@ -92,9 +92,46 @@ class TestLinkCommand:
             result = runner.invoke(app, ["link", "Corrigan", "--birth-year", "1880"])
         assert result.exit_code == 0
 
-    def test_birth_year_required(self):
-        result = runner.invoke(app, ["link", "Corrigan"])
-        assert result.exit_code != 0
+    def test_birth_year_optional(self):
+        """--birth-year is now optional; omitting it should still exit 0."""
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+        ):
+            result = runner.invoke(app, ["link", "Corrigan", "--county", "Kilkenny"])
+        assert result.exit_code == 0
+
+    def test_no_birth_year_skips_1911_1901_search(self):
+        """Without --birth-year, 1901/1911 search is not performed."""
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+        ):
+            runner.invoke(app, ["link", "Corrigan", "--county", "Kilkenny"])
+        mock_old.search_both_years.assert_not_called()
+
+    def test_multiple_matches_no_birth_year_shows_table(self):
+        """Multiple 1926 matches without --birth-year show a results table, not a single-row tree."""
+        rec1 = CensusRecord(census_year=1926, surname="Corrigan", first_name="James", age=44,
+                            county="Kilkenny", townland_street="Lamogue", ded="Kilmaganny")
+        rec2 = CensusRecord(census_year=1926, surname="Corrigan", first_name="Patrick", age=52,
+                            county="Kilkenny", townland_street="Main Street", ded="Kilkenny Urban")
+        mock_1926, mock_old = _setup_link_mocks([rec1, rec2])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+        ):
+            result = runner.invoke(app, ["link", "Corrigan", "--county", "Kilkenny"])
+        assert result.exit_code == 0
+        # Header shows result count and hint
+        assert "2 result" in result.output
+        assert "result" in result.output
+        # Tree-style year markers should NOT appear (table mode, not tree mode)
+        assert "├──" not in result.output
+        # 1901/1911 not searched
+        mock_old.search_both_years.assert_not_called()
 
     def test_shows_surname_in_output(self):
         mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
@@ -118,6 +155,44 @@ class TestLinkCommand:
         assert "1926" in result.output
         assert "1911" in result.output
         # 1901 has 0 results so is omitted from the summary
+
+    def test_sex_filters_client_side(self):
+        """Female records are excluded when --sex Male is given, regardless of API response."""
+        male1 = CensusRecord(census_year=1926, surname="Corrigan", first_name="James",
+                             age=44, sex="Male", county="Kilkenny",
+                             townland_street="Lamogue", ded="Kilmaganny")
+        male2 = CensusRecord(census_year=1926, surname="Corrigan", first_name="Patrick",
+                             age=52, sex="Male", county="Kilkenny",
+                             townland_street="Main Street", ded="Kilkenny Urban")
+        female_rec = CensusRecord(census_year=1926, surname="Corrigan", first_name="Mary",
+                                  age=39, sex="Female", county="Kilkenny",
+                                  townland_street="Lamogue", ded="Kilmaganny")
+        # API returns all three; with no birth year and 2+ results the table path is used
+        # (no household fetch), so only matched records appear in output
+        mock_1926, mock_old = _setup_link_mocks([male1, male2, female_rec])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+        ):
+            result = runner.invoke(app, ["link", "Corrigan", "--sex", "Male"])
+        assert result.exit_code == 0
+        assert "2 result" in result.output   # only the two males matched
+        assert "Female" not in result.output
+
+    def test_sex_filter_keeps_records_with_unknown_sex(self):
+        """Records with no sex data are kept when --sex is given (can't confirm a conflict)."""
+        no_sex_rec = CensusRecord(
+            census_year=1926, surname="Corrigan", first_name="James", age=44,
+            sex="", county="Kilkenny", townland_street="Lamogue", ded="Kilmaganny",
+        )
+        mock_1926, mock_old = _setup_link_mocks([no_sex_rec])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+        ):
+            result = runner.invoke(app, ["link", "Corrigan", "--birth-year", "1882", "--sex", "Male"])
+        assert result.exit_code == 0
+        assert " 44 " in result.output  # record was not dropped due to missing sex
 
     def test_sex_passed_to_searcher(self):
         mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
@@ -152,7 +227,7 @@ class TestLinkCommand:
         assert mock_1926.search.call_count == 1
 
     def test_no_1926_match_shows_no_match(self):
-        """When no 1926 records pass the filter, 1926 shows 'no match', not a synthetic record."""
+        """When no 1926 records pass the filter, no record data is displayed for 1926."""
         mock_1926, mock_old = _setup_link_mocks([])
         with (
             patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
@@ -161,8 +236,8 @@ class TestLinkCommand:
             result = runner.invoke(app, ["link", "Gilligan", "--first-name", "Fred", "--birth-year", "1882"])
         assert result.exit_code == 0
         assert "1926" in result.output
-        assert "no match" in result.output
-        assert "age 44" not in result.output
+        # The synthetic age (44) should never appear — no real record was matched
+        assert " 44 " not in result.output
 
     def test_expand_links_household_members(self):
         household = [
@@ -209,8 +284,7 @@ class TestLinkFiltering:
             ["link", "Gilligan", "--first-name", "Fred", "--birth-year", "1882"],
         )
         assert result.exit_code == 0
-        assert "no match" in result.output
-        assert "age 44" not in result.output
+        assert " 44 " not in result.output  # age from excluded record should not appear
 
     def test_first_name_match_is_case_insensitive(self):
         """First-name filter is case-insensitive."""
@@ -222,7 +296,7 @@ class TestLinkFiltering:
             [rec],
             ["link", "Gilligan", "--first-name", "Fred", "--birth-year", "1882"],
         )
-        assert "age 44" in result.output  # record was kept despite lowercase name
+        assert " 44 " in result.output  # record was kept despite lowercase name
 
     def test_age_outside_tolerance_excluded(self):
         """A record whose age is outside birth_year ± age_tolerance is filtered out."""
@@ -236,7 +310,7 @@ class TestLinkFiltering:
             [too_old],
             ["link", "Corrigan", "--first-name", "James", "--birth-year", "1882"],
         )
-        assert "age 48" not in result.output
+        assert " 48 " not in result.output
 
     def test_age_within_tolerance_included(self):
         """A record whose age is within the tolerance window is kept."""
@@ -249,7 +323,7 @@ class TestLinkFiltering:
             [boundary],
             ["link", "Corrigan", "--first-name", "James", "--birth-year", "1882"],
         )
-        assert "age 47" in result.output
+        assert " 47 " in result.output
 
     def test_custom_age_tolerance_respected(self):
         """--age-tolerance overrides the default 3-year window."""
@@ -262,7 +336,7 @@ class TestLinkFiltering:
             [rec],
             ["link", "Corrigan", "--first-name", "James", "--birth-year", "1882", "--age-tolerance", "5"],
         )
-        assert "age 48" in result.output
+        assert " 48 " in result.output
 
     def test_ageless_record_used_only_when_no_aged_records(self):
         """A record without an age is kept only when no aged records pass the filter."""
