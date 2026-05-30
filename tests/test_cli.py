@@ -217,8 +217,14 @@ class TestLinkCommand:
         assert mock_1926.search.call_count == 2
 
     def test_multiple_matches_no_household_fetch(self):
-        """Multiple 1926 matches do not trigger household fetch."""
-        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926(), _corrigan_1926()])
+        """Multiple distinct 1926 matches do not trigger household fetch."""
+        rec1 = CensusRecord(census_year=1926, surname="Corrigan", first_name="James",
+                            age=46, sex="Male", county="Kilkenny",
+                            townland_street="Lamogue", ded="Kilmaganny")
+        rec2 = CensusRecord(census_year=1926, surname="Corrigan", first_name="James",
+                            age=48, sex="Male", county="Tipperary",
+                            townland_street="Main Street", ded="Clonmel")
+        mock_1926, mock_old = _setup_link_mocks([rec1, rec2])
         with (
             patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
             patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
@@ -337,6 +343,68 @@ class TestLinkFiltering:
             ["link", "Corrigan", "--first-name", "James", "--birth-year", "1882", "--age-tolerance", "5"],
         )
         assert " 48 " in result.output
+
+    def test_age_before_widens_older_end(self):
+        """--age-before allows matching records older than default tolerance."""
+        # birth_year=1917, age_1926=9, default tol=3 → window [6,12]
+        # age 4 is 5 years older → excluded at default but included at --age-before 5
+        older = CensusRecord(census_year=1926, surname="Corrigan", first_name="Joseph",
+                             age=4, sex="Male", county="Kilkenny",
+                             townland_street="Lamogue", ded="Kilmaganny")
+        result = self._invoke(
+            [older],
+            ["link", "Corrigan", "--first-name", "Joseph", "--birth-year", "1917",
+             "--age-before", "5"],
+        )
+        assert " 4 " in result.output  # included because tol_before=5
+
+    def test_age_before_default_excludes_older(self):
+        """Without --age-before, age 4 for birth_year=1917 is excluded (5 years off)."""
+        older = CensusRecord(census_year=1926, surname="Corrigan", first_name="Joseph",
+                             age=4, sex="Male", county="Kilkenny",
+                             townland_street="Lamogue", ded="Kilmaganny")
+        result = self._invoke(
+            [older],
+            ["link", "Corrigan", "--first-name", "Joseph", "--birth-year", "1917"],
+        )
+        assert " 4 " not in result.output  # excluded at default ±3
+
+    def test_age_after_widens_younger_end(self):
+        """--age-after allows matching records younger than default tolerance."""
+        # birth_year=1917, age_1926=9, default tol=3 → window [6,12]
+        # age 14 is 5 years younger → excluded at default but included at --age-after 10
+        younger = CensusRecord(census_year=1926, surname="Corrigan", first_name="Joseph",
+                               age=14, sex="Male", county="Kilkenny",
+                               townland_street="Lamogue", ded="Kilmaganny")
+        result = self._invoke(
+            [younger],
+            ["link", "Corrigan", "--first-name", "Joseph", "--birth-year", "1917",
+             "--age-after", "10"],
+        )
+        assert " 14 " in result.output
+
+    def test_asymmetric_window_label_shown(self):
+        """When --age-before differs from --age-after, label shows -N/+M format."""
+        rec = CensusRecord(census_year=1926, surname="Corrigan", first_name="Joseph",
+                           age=9, sex="Male", county="Kilkenny",
+                           townland_street="Lamogue", ded="Kilmaganny")
+        result = self._invoke(
+            [rec],
+            ["link", "Corrigan", "--first-name", "Joseph", "--birth-year", "1917",
+             "--age-before", "5", "--age-after", "10"],
+        )
+        assert "-5/+10" in result.output
+
+    def test_symmetric_window_label_shown(self):
+        """When age-tolerance is symmetric, label shows ±N format."""
+        rec = CensusRecord(census_year=1926, surname="Corrigan", first_name="James",
+                           age=44, sex="Male", county="Kilkenny",
+                           townland_street="Lamogue", ded="Kilmaganny")
+        result = self._invoke(
+            [rec],
+            ["link", "Corrigan", "--first-name", "James", "--birth-year", "1882"],
+        )
+        assert "±3" in result.output
 
     def test_ageless_record_used_only_when_no_aged_records(self):
         """A record without an age is kept only when no aged records pass the filter."""

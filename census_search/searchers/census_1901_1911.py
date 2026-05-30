@@ -143,11 +143,14 @@ class Census1901_1911Searcher:
         self,
         surname: str,
         first_name: str = "",
+        first_names: list[str] | None = None,
         county: str = "",
         counties: list[str] | None = None,
         sex: str = "",
         birth_year: Optional[int] = None,
         age_tolerance: int = 3,
+        age_before: Optional[int] = None,
+        age_after: Optional[int] = None,
         exact: bool = False,
         max_results: int = 50,
     ) -> list[SearchResult]:
@@ -156,36 +159,45 @@ class Census1901_1911Searcher:
         *counties* (list) takes precedence over *county* (single string).
         When multiple counties are supplied, each is searched independently
         and results are merged into a single SearchResult per year.
+
+        *age_before* / *age_after* allow an asymmetric window — the person
+        could be up to *age_before* years older or *age_after* years younger
+        than *birth_year* implies.  Both default to *age_tolerance* when omitted.
         """
+        tol_before = age_before if age_before is not None else age_tolerance
+        tol_after = age_after if age_after is not None else age_tolerance
         county_list = counties if counties else ([county] if county else [""])
+        # first_names list takes priority over the single first_name string
+        name_list = first_names if first_names else ([first_name] if first_name else [""])
 
         results = []
         for year in [1901, 1911]:
             age_from, age_to = None, None
             if birth_year is not None:
                 expected_age = year - birth_year
-                age_from = max(0, expected_age - age_tolerance)
-                age_to = expected_age + age_tolerance
+                age_from = max(0, expected_age - tol_after)   # younger → smaller age
+                age_to = expected_age + tol_before             # older → larger age
 
             merged_records: list = []
             merged_total = 0
             first_url = ""
             for c in county_list:
-                r = await self.search(
-                    surname=surname,
-                    first_name=first_name,
-                    county=c,
-                    sex=sex,
-                    census_year=year,
-                    age_from=age_from,
-                    age_to=age_to,
-                    exact=exact,
-                    max_results=max_results,
-                )
-                merged_records.extend(r.records)
-                merged_total += r.total
-                if not first_url:
-                    first_url = r.search_url
+                for fn in name_list:
+                    r = await self.search(
+                        surname=surname,
+                        first_name=fn,
+                        county=c,
+                        sex=sex,
+                        census_year=year,
+                        age_from=age_from,
+                        age_to=age_to,
+                        exact=exact,
+                        max_results=max_results,
+                    )
+                    merged_records.extend(r.records)
+                    merged_total += r.total
+                    if not first_url:
+                        first_url = r.search_url
 
             # Deduplicate by (surname, first_name, age, county)
             seen: set[tuple] = set()

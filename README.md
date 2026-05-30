@@ -36,6 +36,9 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 # Search across multiple counties
 poetry run census-search link Corrigan --first-name James --birth-year 1882 --county "Kilkenny,Tipperary"
 
+# Search for name variants (Joe, Joseph, Jos) in one pass
+poetry run census-search link Corrigan --first-name "Joe,Joseph,Jos" --birth-year 1917 --county Kilkenny --sex Male
+
 # Show household + link all members to 1911 & 1901
 poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
 ```
@@ -43,7 +46,7 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--birth-year` | `-b` | | Known or estimated birth year — omit to browse all ages |
-| `--first-name` | `-f` | | First name |
+| `--first-name` | `-f` | | First name — comma-separate variants (e.g. `Joe,Joseph,Jos`) |
 | `--county` | `-c` | | County or comma-separated counties (e.g. `Kilkenny` or `Kilkenny,Tipperary`) |
 | `--sex` | `-s` | | `Male` or `Female` — enforced client-side |
 | `--expand` | | false | Link all 1926 household members to 1911 & 1901 |
@@ -56,7 +59,7 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 **Browse without birth year** — returns all matches as a table:
 
 ```
-$ census-search link Corrigan --county Kilkenny --sex Male
+$ poetry run census-search link Corrigan --county Kilkenny --sex Male
 
 Corrigan  8 result(s)  add --birth-year to link across 1911 & 1901
  #   Surname    First Name   Age  Sex   County    Townland / Street  DED              Birthplace
@@ -69,7 +72,7 @@ Corrigan  8 result(s)  add --birth-year to link across 1911 & 1901
 **Link with birth year** — one row per census year with a confidence score:
 
 ```
-$ census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
+$ poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
 
 James Corrigan  (born ~1882 ±3yr)
  Year  Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace  Match
@@ -84,10 +87,23 @@ Household  Lamogue, Kilmaganny, Kilkenny
  3   Corrigan   Patrick        9  Male    Son           Kilkenny  Lamogue            Kilmaganny
 ```
 
+**Multiple first name variants** — searches all variants and shows whichever name appears in the record:
+
+```
+$ poetry run census-search link Corrigan --first-name "Joe,Joseph,Jos" \
+    --birth-year 1917 --county "Kilkenny,Tipperary" --sex Male
+
+Joe / Joseph / Jos Corrigan  (born ~1917 ±3yr)
+ Year  Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace  Match
+ 1901  Corrigan   Joseph         0  Male  Kilkenny  Lamogue            Kilmaganny                 78%
+ 1911  Corrigan   Joe            6  Male  Kilkenny  Lamogue            Kilmaganny                 82%
+ 1926  Corrigan   Joseph         9  Male  Kilkenny  Lamogue            Kilmaganny                  —
+```
+
 **Multi-county search** — merges results from both counties:
 
 ```
-$ census-search link Purcell --first-name Mary --birth-year 1887 --county "Kilkenny,Tipperary" --sex Female
+$ poetry run census-search link Purcell --first-name Mary --birth-year 1887 --county "Kilkenny,Tipperary" --sex Female
 
 Mary Purcell  (born ~1887 ±3yr)
  Year  Surname  First Name  Age  Sex     County    Townland / Street  DED                 Birthplace  Match
@@ -99,26 +115,31 @@ Mary Purcell  (born ~1887 ±3yr)
 **Expand household** — links each member back to 1911 & 1901:
 
 ```
-$ census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
+$ poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
 
 James Corrigan  (born ~1882 ±3yr)
- Year  Surname   First Name  Age  ...  Match
- 1901  Corrigan  James        19  ...    91%
- 1911  Corrigan  James        29  ...    95%
- 1926  Corrigan  James        44  ...     —
+ Year  Surname   First Name  Age  Sex   County    Townland / Street  DED          Birthplace  Match
+ 1901  Corrigan  James        19  Male  Kilkenny  Lamogue            Kilmaganny                 91%
+ 1911  Corrigan  James        29  Male  Kilkenny  Lamogue            Kilmaganny                 95%
+ 1926  Corrigan  James        44  Male  Kilkenny  Lamogue            Kilmaganny                  —
 
 Household  Lamogue, Kilmaganny, Kilkenny
- #  Surname   First Name  Age  Sex     Relationship  ...
- 1  Corrigan  Mary         39  Female  Wife          ...
- 2  Corrigan  Brigid       14  Female  Daughter      ...
+ #  Surname   First Name  Age  Sex     Relationship  County    Townland / Street  DED          Birthplace
+ 1  Corrigan  Mary         39  Female  Wife          Kilkenny  Lamogue            Kilmaganny
+ 2  Corrigan  Brigid       14  Female  Daughter      Kilkenny  Lamogue            Kilmaganny
+ 3  Corrigan  Patrick       9  Male    Son           Kilkenny  Lamogue            Kilmaganny
 
 Mary Corrigan  (born ~1887 ±3yr)
- Year  Surname   First Name  Age  Sex     ...  Match
- 1911  Corrigan  Mary         24  Female  ...    87%
- 1901  Corrigan  Mary         14  Female  ...    79%
+ Year  Surname   First Name  Age  Sex     County    Townland / Street  DED          Birthplace  Match
+ 1911  Corrigan  Mary         24  Female  Kilkenny  Lamogue            Kilmaganny                 87%
+ 1901  Corrigan  Mary         14  Female  Kilkenny  Lamogue            Kilmaganny                 79%
+
+Patrick Corrigan  (born ~1917 ±3yr)
+ Year  Surname   First Name  Age  Sex   County    Townland / Street  DED          Birthplace  Match
+ 1926  Corrigan  Patrick       9  Male  Kilkenny  Lamogue            Kilmaganny                  —
 ```
 
-When a household is found it is shown below as a separate table. `--expand` adds a further per-member cross-year table for each household member.
+When a household is found it is shown below as a separate table. `--expand` adds a further per-member cross-year table for each household member born before 1926.
 
 #### How `--expand` handles absent persons
 

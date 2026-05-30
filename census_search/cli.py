@@ -174,7 +174,9 @@ def link(
     birth_year: Optional[int] = typer.Option(None, "--birth-year", "-b", help="Birth year (omit to browse all ages)"),
     county: str = typer.Option("", "--county", "-c", help="County (e.g. Dublin, Cork)"),
     sex: str = typer.Option("", "--sex", "-s", help="Sex filter (Male or Female)"),
-    age_tolerance: int = typer.Option(3, "--age-tolerance", help="±years for age matching (default 3)"),
+    age_tolerance: int = typer.Option(3, "--age-tolerance", help="±years for age matching"),
+    age_before: Optional[int] = typer.Option(None, "--age-before", help="Years older the person may be"),
+    age_after: Optional[int] = typer.Option(None, "--age-after", help="Years younger the person may be"),
     max_results: int = typer.Option(30, "--max", "-n", help="Max results per census year"),
     expand: bool = typer.Option(
         False, "--expand/--no-expand",
@@ -198,6 +200,7 @@ def link(
       census-search link Corrigan --county Kilkenny --sex Male
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
+      census-search link Corrigan --first-name Joseph --birth-year 1917 --county Kilkenny --age-before 5 --age-after 10
     """
     asyncio.run(_do_link(
         surname=surname,
@@ -206,6 +209,8 @@ def link(
         county=county,
         sex=sex,
         age_tolerance=age_tolerance,
+        age_before=age_before,
+        age_after=age_after,
         max_results=max_results,
         expand=expand,
         headless=headless,
@@ -219,42 +224,48 @@ async def _do_link(
     county: str,
     sex: str,
     age_tolerance: int,
+    age_before: Optional[int],
+    age_after: Optional[int],
     max_results: int,
     expand: bool,
     headless: bool,
 ):
+    # Resolve asymmetric tolerance: --age-before/--age-after override --age-tolerance
+    tol_before = age_before if age_before is not None else age_tolerance  # person could be older
+    tol_after = age_after if age_after is not None else age_tolerance     # person could be younger
+
     all_results: list[SearchResult] = []
     age_1926 = (1926 - birth_year) if birth_year else None
     household_members: list[CensusRecord] = []
 
     # Support comma-separated counties, e.g. --county "Kilkenny,Tipperary"
     counties = [c.strip() for c in county.split(",") if c.strip()] if county else []
+    # Support comma-separated first names, e.g. --first-name "Joe,Joseph,Jos"
+    first_names = [n.strip() for n in first_name.split(",") if n.strip()] if first_name else []
 
     async with Census1926Searcher(headless=headless) as s:
         with console.status("Searching…"):
-            if counties:
-                all_raw: list[CensusRecord] = []
-                for c in counties:
-                    r = await s.search(surname=surname, county=c, sex=sex, max_results=500)
-                    all_raw.extend(r.records)
-                # Use first result's metadata for URL/year; deduplicate by name+age+county
-                raw_url = f"multi-county: {', '.join(counties)}"
-                seen: set[tuple] = set()
-                deduped_raw: list[CensusRecord] = []
-                for rec in all_raw:
-                    key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
-                    if key not in seen:
-                        seen.add(key)
-                        deduped_raw.append(rec)
-                raw = SearchResult(census_year=1926, total=len(deduped_raw), records=deduped_raw, search_url=raw_url)
-            else:
-                raw = await s.search(surname=surname, county=county, sex=sex, max_results=500)
+            search_counties = counties if counties else ([county] if county else [""])
+            all_raw: list[CensusRecord] = []
+            for c in search_counties:
+                r = await s.search(surname=surname, county=c, sex=sex, max_results=500)
+                all_raw.extend(r.records)
+            raw_url = f"multi-county: {', '.join(counties)}" if counties else ""
+            seen: set[tuple] = set()
+            deduped_raw: list[CensusRecord] = []
+            for rec in all_raw:
+                key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
+                if key not in seen:
+                    seen.add(key)
+                    deduped_raw.append(rec)
+            raw = SearchResult(census_year=1926, total=len(deduped_raw), records=deduped_raw, search_url=raw_url)
 
         matched = [
             rec for rec in raw.records
-            if (not first_name or (rec.first_name or "").lower() == first_name.lower())
+            if (not first_names or (rec.first_name or "").lower() in {n.lower() for n in first_names})
             and (not sex or not rec.sex or rec.sex.lower().startswith(sex.lower()[0]))
-            and (age_1926 is None or rec.age is None or abs(rec.age - age_1926) <= age_tolerance)
+            and (age_1926 is None or rec.age is None
+                 or (age_1926 - tol_before) <= rec.age <= (age_1926 + tol_after))
         ]
         if age_1926 is not None:
             aged = [rec for rec in matched if rec.age is not None]
@@ -292,7 +303,7 @@ async def _do_link(
                     if (r.surname or "").lower() != (anchor.surname or "").lower():
                         return False
                     if r.age is not None and anchor.age is not None:
-                        return abs(r.age - anchor.age) <= age_tolerance
+                        return (anchor.age - tol_before) <= r.age <= (anchor.age + tol_after)
                     return True  # one or both ages unknown — treat as same person
 
                 household_members = [r for r in household_members if not _is_primary_person(r)]
@@ -304,18 +315,21 @@ async def _do_link(
                 # name + age window is specific enough without it
                 old = await s.search_both_years(
                     surname=surname,
-                    first_name=first_name,
+                    first_names=first_names,
+                    first_name=first_names[0] if len(first_names) == 1 else "",
                     counties=counties or ([county] if county else []),
                     birth_year=birth_year,
-                    age_tolerance=age_tolerance,
+                    age_before=tol_before,
+                    age_after=tol_after,
                     max_results=max_results,
                 )
             for r in old:
                 all_results.append(r)
 
+    name_label = f"{' / '.join(first_names) if first_names else ''} {surname}".strip()
+
     # No birth year — always show a results table regardless of match count
     if not birth_year:
-        name_label = f"{first_name} {surname}".strip()
         console.print()
         hint = "[dim]add --birth-year to link across 1911 & 1901[/dim]"
         count_label = f"[dim]{len(matched)} result(s)[/dim]" if matched else "[dim]no results[/dim]"
@@ -325,12 +339,17 @@ async def _do_link(
         return
 
     # Use the 1926 match as anchor for cross-year matching; fall back to a synthetic record
+    anchor_first = first_names[0] if first_names else ""
     anchor_1926 = matched[0] if matched else CensusRecord(
-        census_year=1926, surname=surname, first_name=first_name, age=age_1926
+        census_year=1926, surname=surname, first_name=anchor_first, age=age_1926
     )
-
-    name_label = f"{first_name} {surname}".strip()
-    birth_label = f"  [dim](born ~{birth_year} ±{age_tolerance}yr)[/dim]" if birth_year else ""
+    if birth_year:
+        if tol_before == tol_after:
+            birth_label = f"  [dim](born ~{birth_year} ±{tol_before}yr)[/dim]"
+        else:
+            birth_label = f"  [dim](born ~{birth_year} -{tol_before}/+{tol_after}yr)[/dim]"
+    else:
+        birth_label = ""
     display_years = [1926, 1911, 1901] if birth_year else [1926]
     console.print()
     console.print(f"[bold cyan]{name_label}[/bold cyan]{birth_label}")
@@ -367,7 +386,8 @@ async def _do_link(
                     first_name=member.first_name,
                     counties=member_counties,
                     birth_year=born,
-                    age_tolerance=age_tolerance,
+                    age_before=tol_before,
+                    age_after=tol_after,
                     max_results=max_results,
                 )
             member_results = [r for r in res if r.census_year in years_to_search]
@@ -381,7 +401,13 @@ async def _do_link(
                 county=member.county,
                 relationship=member.relationship,
             )
-            born_label = f"  [dim](born ~{born} ±{age_tolerance}yr)[/dim]" if born else ""
+            if born:
+                if tol_before == tol_after:
+                    born_label = f"  [dim](born ~{born} ±{tol_before}yr)[/dim]"
+                else:
+                    born_label = f"  [dim](born ~{born} -{tol_before}/+{tol_after}yr)[/dim]"
+            else:
+                born_label = ""
             console.print(f"\n[cyan]{member.full_name}[/cyan]{born_label}")
             console.print(_person_table(anchor_m, member_results, years_to_search))
 
