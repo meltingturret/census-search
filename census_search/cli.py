@@ -13,14 +13,14 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+from typing import Optional
 
 import typer
 from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich.tree import Tree
 
-from census_search.linker import link_person
+from census_search.linker import best_scored_match
 from census_search.models import CensusRecord, SearchResult
 from census_search.searchers.census_1901_1911 import Census1901_1911Searcher
 from census_search.searchers.census_1926 import Census1926Searcher
@@ -54,7 +54,6 @@ def _record_table(records: list[CensusRecord], title: str) -> Table:
     table.add_column("County")
     table.add_column("Townland / Street")
     table.add_column("DED")
-    table.add_column("Occupation")
     table.add_column("Birthplace")
 
     for i, r in enumerate(records, 1):
@@ -67,65 +66,72 @@ def _record_table(records: list[CensusRecord], title: str) -> Table:
             r.county or "—",
             r.townland_street or "—",
             r.ded or "—",
-            r.occupation or "—",
             r.birthplace or "—",
         )
     return table
 
 
-def _record_leaf(r: CensusRecord) -> str:
-    """Compact single-line description of a census record for tree nodes."""
-    parts: list[str] = [f"[bold]{r.full_name}[/bold]"]
-    if r.age is not None:
-        parts.append(f"age {r.age}")
-    location = ", ".join(filter(None, [r.townland_street, r.ded, r.county]))
-    if location:
-        parts.append(location)
-    if r.occupation:
-        parts.append(f"[dim]({r.occupation})[/dim]")
-    return "  ".join(parts)
+def _best_match(anchor: CensusRecord, result: SearchResult) -> tuple[CensusRecord, float] | None:
+    """Return (best_record, confidence_0_to_1) from a search result, or None."""
+    return best_scored_match(anchor, result)
 
 
-def _best_match(anchor: CensusRecord, result: SearchResult) -> CensusRecord | None:
-    """Return the best-matching record from a search result, or None."""
-    if not result.records:
-        return None
-    linked = link_person(anchor, [result])
-    # link_person appends matched records after the anchor; return first non-anchor
-    matched = [r for r in linked.records if r.census_year != anchor.census_year]
-    return matched[0] if matched else None
-
-
-def _person_tree(
-    label: str,
+def _person_table(
     anchor: CensusRecord,
     results: list[SearchResult],
     all_years: list[int],
-) -> Tree:
-    """Tree showing a person across census years, best-matched record per year."""
-    tree = Tree(label)
+) -> Table:
+    """Table showing a person across census years — one row per year."""
+    table = Table(box=box.SIMPLE_HEAD, show_lines=False)
+    table.add_column("Year", style="yellow", width=6)
+    table.add_column("Surname", style="bold")
+    table.add_column("First Name")
+    table.add_column("Age", justify="right")
+    table.add_column("Sex")
+    table.add_column("County")
+    table.add_column("Townland / Street")
+    table.add_column("DED")
+    table.add_column("Birthplace")
+    table.add_column("Match", justify="right")
+
     by_year = {r.census_year: r for r in results}
     for year in sorted(all_years):
         result = by_year.get(year)
-        year_tag = f"[yellow]{year}[/yellow]"
         if year == anchor.census_year:
             if result and result.records:
-                branch = tree.add(f"{year_tag}  {_record_leaf(anchor)}")
-                if anchor.detail_url:
-                    branch.add(f"[dim][link={anchor.detail_url}]{anchor.detail_url}[/link][/dim]")
+                r = anchor
+                table.add_row(
+                    str(year), r.surname or "—", r.first_name or "—",
+                    str(r.age) if r.age is not None else "—",
+                    r.sex or "—", r.county or "—",
+                    r.townland_street or "—", r.ded or "—",
+                    r.birthplace or "—", "—",
+                )
             else:
-                tree.add(f"{year_tag}  [dim]no match[/dim]")
+                table.add_row(str(year), *["—"] * 8, "[dim]no match[/dim]")
         elif result:
-            rec = _best_match(anchor, result)
-            if rec:
-                branch = tree.add(f"{year_tag}  {_record_leaf(rec)}")
-                if rec.detail_url:
-                    branch.add(f"[dim][link={rec.detail_url}]{rec.detail_url}[/link][/dim]")
+            match = _best_match(anchor, result)
+            if match:
+                r, conf = match
+                conf_pct = int(conf * 100)
+                if conf_pct >= 80:
+                    conf_str = f"[green]{conf_pct}%[/green]"
+                elif conf_pct >= 55:
+                    conf_str = f"[yellow]{conf_pct}%[/yellow]"
+                else:
+                    conf_str = f"[dim]{conf_pct}%[/dim]"
+                table.add_row(
+                    str(year), r.surname or "—", r.first_name or "—",
+                    str(r.age) if r.age is not None else "—",
+                    r.sex or "—", r.county or "—",
+                    r.townland_street or "—", r.ded or "—",
+                    r.birthplace or "—", conf_str,
+                )
             else:
-                tree.add(f"{year_tag}  [dim]no match[/dim]")
+                table.add_row(str(year), *["—"] * 8, "[dim]no match[/dim]")
         else:
-            tree.add(f"{year_tag}  [dim]no match[/dim]")
-    return tree
+            table.add_row(str(year), *["—"] * 8, "[dim]no match[/dim]")
+    return table
 
 
 def _household_table(members: list[CensusRecord], location: str) -> Table:
@@ -165,7 +171,7 @@ def _household_table(members: list[CensusRecord], location: str) -> Table:
 def link(
     surname: str = typer.Argument(..., help="Surname"),
     first_name: str = typer.Option("", "--first-name", "-f", help="First name"),
-    birth_year: int = typer.Option(..., "--birth-year", "-b", help="Known or estimated birth year"),
+    birth_year: Optional[int] = typer.Option(None, "--birth-year", "-b", help="Birth year (omit to browse all ages)"),
     county: str = typer.Option("", "--county", "-c", help="County (e.g. Dublin, Cork)"),
     sex: str = typer.Option("", "--sex", "-s", help="Sex filter (Male or Female)"),
     age_tolerance: int = typer.Option(3, "--age-tolerance", help="±years for age matching (default 3)"),
@@ -177,17 +183,19 @@ def link(
     headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headlessly"),
 ):
     """
-    Search all three censuses (1926, 1911, 1901) for a person using a known birth year.
+    Search all three censuses (1926, 1911, 1901) for a person.
+
+    --birth-year is optional. Without it, all age matches are returned from 1926
+    only (no 1911/1901 linking). With it, records are age-filtered and linked
+    across all three years.
 
     When exactly one 1926 record is found, the full household is shown automatically.
     Use --expand to also link each household member back to 1911 & 1901.
 
-    If the primary person is absent (e.g. away on military service), the closest
-    surname match is used as the household address anchor.
-
     Examples:
 
     \b
+      census-search link Corrigan --county Kilkenny --sex Male
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
     """
@@ -207,7 +215,7 @@ def link(
 async def _do_link(
     surname: str,
     first_name: str,
-    birth_year: int,
+    birth_year: Optional[int],
     county: str,
     sex: str,
     age_tolerance: int,
@@ -216,21 +224,42 @@ async def _do_link(
     headless: bool,
 ):
     all_results: list[SearchResult] = []
-    age_1926 = 1926 - birth_year
+    age_1926 = (1926 - birth_year) if birth_year else None
     household_members: list[CensusRecord] = []
+
+    # Support comma-separated counties, e.g. --county "Kilkenny,Tipperary"
+    counties = [c.strip() for c in county.split(",") if c.strip()] if county else []
 
     async with Census1926Searcher(headless=headless) as s:
         with console.status("Searching…"):
-            raw = await s.search(surname=surname, county=county, sex=sex, max_results=500)
+            if counties:
+                all_raw: list[CensusRecord] = []
+                for c in counties:
+                    r = await s.search(surname=surname, county=c, sex=sex, max_results=500)
+                    all_raw.extend(r.records)
+                # Use first result's metadata for URL/year; deduplicate by name+age+county
+                raw_url = f"multi-county: {', '.join(counties)}"
+                seen: set[tuple] = set()
+                deduped_raw: list[CensusRecord] = []
+                for rec in all_raw:
+                    key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
+                    if key not in seen:
+                        seen.add(key)
+                        deduped_raw.append(rec)
+                raw = SearchResult(census_year=1926, total=len(deduped_raw), records=deduped_raw, search_url=raw_url)
+            else:
+                raw = await s.search(surname=surname, county=county, sex=sex, max_results=500)
 
         matched = [
             rec for rec in raw.records
             if (not first_name or (rec.first_name or "").lower() == first_name.lower())
-            and (rec.age is None or abs(rec.age - age_1926) <= age_tolerance)
+            and (not sex or not rec.sex or rec.sex.lower().startswith(sex.lower()[0]))
+            and (age_1926 is None or rec.age is None or abs(rec.age - age_1926) <= age_tolerance)
         ]
-        aged = [rec for rec in matched if rec.age is not None]
-        if aged:
-            matched = aged
+        if age_1926 is not None:
+            aged = [rec for rec in matched if rec.age is not None]
+            if aged:
+                matched = aged
         all_results.append(SearchResult(
             census_year=raw.census_year, total=len(matched),
             records=matched, search_url=raw.search_url,
@@ -268,30 +297,44 @@ async def _do_link(
 
                 household_members = [r for r in household_members if not _is_primary_person(r)]
 
-    async with Census1901_1911Searcher() as s:
-        with console.status("Searching 1911 & 1901…"):
-            # Sex is excluded — the 1901/1911 API uses different sex codes than 1926;
-            # name + age window is specific enough without it
-            old = await s.search_both_years(
-                surname=surname,
-                first_name=first_name,
-                county=county,
-                birth_year=birth_year,
-                age_tolerance=age_tolerance,
-                max_results=max_results,
-            )
-        for r in old:
-            all_results.append(r)
+    if birth_year:
+        async with Census1901_1911Searcher() as s:
+            with console.status("Searching 1911 & 1901…"):
+                # Sex is excluded — the 1901/1911 API uses different sex codes than 1926;
+                # name + age window is specific enough without it
+                old = await s.search_both_years(
+                    surname=surname,
+                    first_name=first_name,
+                    counties=counties or ([county] if county else []),
+                    birth_year=birth_year,
+                    age_tolerance=age_tolerance,
+                    max_results=max_results,
+                )
+            for r in old:
+                all_results.append(r)
+
+    # No birth year — always show a results table regardless of match count
+    if not birth_year:
+        name_label = f"{first_name} {surname}".strip()
+        console.print()
+        hint = "[dim]add --birth-year to link across 1911 & 1901[/dim]"
+        count_label = f"[dim]{len(matched)} result(s)[/dim]" if matched else "[dim]no results[/dim]"
+        console.print(f"[bold cyan]{name_label}[/bold cyan]  {count_label}  {hint}")
+        if matched:
+            console.print(_record_table(matched, ""))
+        return
 
     # Use the 1926 match as anchor for cross-year matching; fall back to a synthetic record
     anchor_1926 = matched[0] if matched else CensusRecord(
         census_year=1926, surname=surname, first_name=first_name, age=age_1926
     )
 
-    # Primary person tree
-    label = f"[bold cyan]{first_name} {surname}[/bold cyan] [dim](born ~{birth_year} ±{age_tolerance}yr)[/dim]"
+    name_label = f"{first_name} {surname}".strip()
+    birth_label = f"  [dim](born ~{birth_year} ±{age_tolerance}yr)[/dim]" if birth_year else ""
+    display_years = [1926, 1911, 1901] if birth_year else [1926]
     console.print()
-    console.print(_person_tree(label, anchor_1926, all_results, [1926, 1911, 1901]))
+    console.print(f"[bold cyan]{name_label}[/bold cyan]{birth_label}")
+    console.print(_person_table(anchor_1926, all_results, display_years))
 
     if not household_members:
         return
@@ -317,28 +360,30 @@ async def _do_link(
             years_to_search = [y for y in [1911, 1901] if born < y]
             if not years_to_search:
                 continue
+            member_counties = ([member.county] if member.county else counties or ([county] if county else []))
             with console.status(f"  {member.full_name}…"):
                 res = await s.search_both_years(
                     surname=member.surname,
                     first_name=member.first_name,
-                    county=member.county or county,
+                    counties=member_counties,
                     birth_year=born,
                     age_tolerance=age_tolerance,
                     max_results=max_results,
                 )
             member_results = [r for r in res if r.census_year in years_to_search]
-            label = (
-                f"[cyan]{member.full_name}[/cyan]"
-                + (f" [dim](born ~{born} ±{age_tolerance}yr)[/dim]" if born else "")
-            )
-            # Build a synthetic 1926 anchor from the household member
+            # Build a 1926 anchor from the household member (carry relationship for scoring)
             anchor_m = CensusRecord(
                 census_year=1926,
                 surname=member.surname,
                 first_name=member.first_name,
                 age=member.age,
+                sex=member.sex,
+                county=member.county,
+                relationship=member.relationship,
             )
-            console.print(_person_tree(label, anchor_m, member_results, years_to_search))
+            born_label = f"  [dim](born ~{born} ±{age_tolerance}yr)[/dim]" if born else ""
+            console.print(f"\n[cyan]{member.full_name}[/cyan]{born_label}")
+            console.print(_person_table(anchor_m, member_results, years_to_search))
 
 
 @app.command()

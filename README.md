@@ -2,7 +2,7 @@
 
 CLI tool for tracing individuals across Irish National Archives census records (1926, 1911, 1901).
 
-Searches the **1926 census** by name and birth year, links forward to **1911** and **1901**, and can expand to the full household — useful when the primary person is absent (e.g. away on military service) but family members are listed at the address.
+Searches the **1926 census** by name, then links backwards to **1911** and **1901** using confidence scoring. Results are always displayed as tables. When a single 1926 record is found, the full household is shown automatically.
 
 ## Install
 
@@ -22,15 +22,19 @@ poetry run playwright install chromium
 
 ## Commands
 
-### `link` — search all three censuses for a person
+### `link` — search and link across all three censuses
 
-The primary command. Searches 1926, 1911, and 1901 simultaneously using a known birth year.
-
-When exactly one 1926 record is found, the full household is shown automatically. Use `--expand` to also link each household member back to 1911 and 1901.
+The primary command. Without `--birth-year`, returns all 1926 matches as a browse table. With `--birth-year`, age-filters results and links each match across 1911 and 1901 with a confidence score.
 
 ```bash
-# Basic search
+# Browse all male Corrigans in Kilkenny (no birth year)
+poetry run census-search link Corrigan --county Kilkenny --sex Male
+
+# Link across all three censuses using a known birth year
 poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
+
+# Search across multiple counties
+poetry run census-search link Corrigan --first-name James --birth-year 1882 --county "Kilkenny,Tipperary"
 
 # Show household + link all members to 1911 & 1901
 poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
@@ -38,18 +42,87 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--birth-year` | `-b` | required | Known or estimated birth year |
+| `--birth-year` | `-b` | | Known or estimated birth year — omit to browse all ages |
 | `--first-name` | `-f` | | First name |
-| `--county` | `-c` | | County (e.g. `Kilkenny`, `Dublin`) |
-| `--sex` | `-s` | | `Male` or `Female` |
+| `--county` | `-c` | | County or comma-separated counties (e.g. `Kilkenny` or `Kilkenny,Tipperary`) |
+| `--sex` | `-s` | | `Male` or `Female` — enforced client-side |
 | `--expand` | | false | Link all 1926 household members to 1911 & 1901 |
 | `--age-tolerance` | | 3 | ±years for age matching across censuses |
 | `--max` | `-n` | 30 | Max results per census year |
 | `--no-headless` | | | Show browser window (useful for debugging) |
 
+#### Output examples
+
+**Browse without birth year** — returns all matches as a table:
+
+```
+$ census-search link Corrigan --county Kilkenny --sex Male
+
+Corrigan  8 result(s)  add --birth-year to link across 1911 & 1901
+ #   Surname    First Name   Age  Sex   County    Townland / Street  DED              Birthplace
+ 1   Corrigan   James         44  Male  Kilkenny  Lamogue            Kilmaganny
+ 2   Corrigan   Patrick       52  Male  Kilkenny  Main Street        Kilkenny Urban
+ 3   Corrigan   Thomas        31  Male  Kilkenny  Ballyline          Scotsborough
+ ...
+```
+
+**Link with birth year** — one row per census year with a confidence score:
+
+```
+$ census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
+
+James Corrigan  (born ~1882 ±3yr)
+ Year  Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace  Match
+ 1901  Corrigan   James         19  Male  Kilkenny  Lamogue            Kilmaganny                 91%
+ 1911  Corrigan   James         29  Male  Kilkenny  Lamogue            Kilmaganny                 95%
+ 1926  Corrigan   James         44  Male  Kilkenny  Lamogue            Kilmaganny                  —
+
+Household  Lamogue, Kilmaganny, Kilkenny
+ #   Surname    First Name   Age  Sex     Relationship  County    Townland / Street  DED
+ 1   Corrigan   Mary          39  Female  Wife          Kilkenny  Lamogue            Kilmaganny
+ 2   Corrigan   Brigid        14  Female  Daughter      Kilkenny  Lamogue            Kilmaganny
+ 3   Corrigan   Patrick        9  Male    Son           Kilkenny  Lamogue            Kilmaganny
+```
+
+**Multi-county search** — merges results from both counties:
+
+```
+$ census-search link Purcell --first-name Mary --birth-year 1887 --county "Kilkenny,Tipperary" --sex Female
+
+Mary Purcell  (born ~1887 ±3yr)
+ Year  Surname  First Name  Age  Sex     County    Townland / Street  DED                 Birthplace  Match
+ 1901  Purcell  Mary         14  Female  Kilkenny  Ballyline          Scotsborough                      92%
+ 1911  Purcell  Mary         22  Female  Kilkenny  Brownstown         Kilkenny Rural                    88%
+ 1926  Purcell  Mary         38  Female  Kilkenny  Balief Upper       Clomantagh                         —
+```
+
+**Expand household** — links each member back to 1911 & 1901:
+
+```
+$ census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
+
+James Corrigan  (born ~1882 ±3yr)
+ Year  Surname   First Name  Age  ...  Match
+ 1901  Corrigan  James        19  ...    91%
+ 1911  Corrigan  James        29  ...    95%
+ 1926  Corrigan  James        44  ...     —
+
+Household  Lamogue, Kilmaganny, Kilkenny
+ #  Surname   First Name  Age  Sex     Relationship  ...
+ 1  Corrigan  Mary         39  Female  Wife          ...
+ 2  Corrigan  Brigid       14  Female  Daughter      ...
+
+Mary Corrigan  (born ~1887 ±3yr)
+ Year  Surname   First Name  Age  Sex     ...  Match
+ 1911  Corrigan  Mary         24  Female  ...    87%
+ 1901  Corrigan  Mary         14  Female  ...    79%
+```
+
+When a household is found it is shown below as a separate table. `--expand` adds a further per-member cross-year table for each household member.
+
 #### How `--expand` handles absent persons
 
-If the target person is not found in 1926 (e.g. away on military service), the first surname match in the county is used as the household address anchor. The wife or other family members listed at that address are then fetched and linked backwards.
+If the target person is not in 1926 (e.g. away on military service), the first surname match in the area is used as the household address anchor. Family members listed at that address are fetched and linked backwards.
 
 ---
 
@@ -69,14 +142,17 @@ poetry run census-search browse --county Kerry --ded "Tralee Urban"
 
 ## How it works
 
-1. **Search 1926**: Playwright opens a Chromium browser, intercepts the underlying API call, and extracts structured results. The 1926 API does not support first-name filtering server-side — name and age filtering is done client-side.
-2. **Household**: When a single 1926 record is matched, all household members sharing the same form are fetched automatically (identified by the `aform_name` PDF form ID).
-3. **Search 1911 & 1901**: Uses a direct REST API — no browser required. Results are filtered by surname, age window (`expected_age ± tolerance`), and optionally sex and county.
-4. **Linking**: Records are matched across years using name similarity, age consistency, sex, and county.
+1. **Search 1926**: Playwright opens a Chromium browser, intercepts the underlying API call, and extracts structured results. Filtering by first name, sex, and age is done client-side.
+2. **Household**: When a single 1926 record is matched, all household members on the same PDF form (`aform_name`) are fetched automatically.
+3. **Search 1911 & 1901**: Uses a direct REST API — no browser required. Results are filtered by surname, age window (`expected_age ± tolerance`), and county. Multiple counties can be searched and merged.
+4. **Phonetic matching**: Surname variants are caught using Soundex (e.g. Corrigan/Corigan, Purcell/Pursell) and fuzzy string similarity.
+5. **Confidence scoring**: Each candidate is scored across surname, first name, age consistency, county, sex, and relationship. The best match above the threshold is shown with a percentage.
+6. **Relationship-aware linking**: Relationship compatibility across years is factored into scoring (e.g. Son↔Scholar, Daughter↔Scholar score higher than unrelated pairs).
 
 ## Notes
 
 - The 1926 census site is JavaScript-rendered. Playwright/Chromium is required. On first run, Playwright downloads Chromium (~150 MB).
 - The 1901/1911 search uses a direct REST API — no browser needed for that step.
-- Age tolerance of 3 years is recommended — census ages were often approximate.
-- `--expand` links up to all members of the household who have a recorded age.
+- Age tolerance of ±3 years is the default — census ages were often approximate.
+- `--expand` links all household members who have a recorded age.
+- Census ages are not always accurate; the confidence score reflects how well each linked record fits across all available fields.

@@ -144,12 +144,21 @@ class Census1901_1911Searcher:
         surname: str,
         first_name: str = "",
         county: str = "",
+        counties: list[str] | None = None,
         sex: str = "",
         birth_year: Optional[int] = None,
         age_tolerance: int = 3,
         exact: bool = False,
         max_results: int = 50,
     ) -> list[SearchResult]:
+        """Search 1901 and 1911 censuses.
+
+        *counties* (list) takes precedence over *county* (single string).
+        When multiple counties are supplied, each is searched independently
+        and results are merged into a single SearchResult per year.
+        """
+        county_list = counties if counties else ([county] if county else [""])
+
         results = []
         for year in [1901, 1911]:
             age_from, age_to = None, None
@@ -158,18 +167,42 @@ class Census1901_1911Searcher:
                 age_from = max(0, expected_age - age_tolerance)
                 age_to = expected_age + age_tolerance
 
-            result = await self.search(
-                surname=surname,
-                first_name=first_name,
-                county=county,
-                sex=sex,
+            merged_records: list = []
+            merged_total = 0
+            first_url = ""
+            for c in county_list:
+                r = await self.search(
+                    surname=surname,
+                    first_name=first_name,
+                    county=c,
+                    sex=sex,
+                    census_year=year,
+                    age_from=age_from,
+                    age_to=age_to,
+                    exact=exact,
+                    max_results=max_results,
+                )
+                merged_records.extend(r.records)
+                merged_total += r.total
+                if not first_url:
+                    first_url = r.search_url
+
+            # Deduplicate by (surname, first_name, age, county)
+            seen: set[tuple] = set()
+            deduped = []
+            for rec in merged_records:
+                key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(rec)
+
+            from census_search.models import SearchResult as SR
+            results.append(SR(
                 census_year=year,
-                age_from=age_from,
-                age_to=age_to,
-                exact=exact,
-                max_results=max_results,
-            )
-            results.append(result)
+                total=merged_total,
+                records=deduped[:max_results],
+                search_url=first_url,
+            ))
         return results
 
     def _parse_response(
