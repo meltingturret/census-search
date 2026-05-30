@@ -240,30 +240,29 @@ async def _do_link(
 
     # Support comma-separated counties, e.g. --county "Kilkenny,Tipperary"
     counties = [c.strip() for c in county.split(",") if c.strip()] if county else []
+    # Support comma-separated first names, e.g. --first-name "Joe,Joseph,Jos"
+    first_names = [n.strip() for n in first_name.split(",") if n.strip()] if first_name else []
 
     async with Census1926Searcher(headless=headless) as s:
         with console.status("Searching…"):
-            if counties:
-                all_raw: list[CensusRecord] = []
-                for c in counties:
-                    r = await s.search(surname=surname, county=c, sex=sex, max_results=500)
-                    all_raw.extend(r.records)
-                # Use first result's metadata for URL/year; deduplicate by name+age+county
-                raw_url = f"multi-county: {', '.join(counties)}"
-                seen: set[tuple] = set()
-                deduped_raw: list[CensusRecord] = []
-                for rec in all_raw:
-                    key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
-                    if key not in seen:
-                        seen.add(key)
-                        deduped_raw.append(rec)
-                raw = SearchResult(census_year=1926, total=len(deduped_raw), records=deduped_raw, search_url=raw_url)
-            else:
-                raw = await s.search(surname=surname, county=county, sex=sex, max_results=500)
+            search_counties = counties if counties else ([county] if county else [""])
+            all_raw: list[CensusRecord] = []
+            for c in search_counties:
+                r = await s.search(surname=surname, county=c, sex=sex, max_results=500)
+                all_raw.extend(r.records)
+            raw_url = f"multi-county: {', '.join(counties)}" if counties else ""
+            seen: set[tuple] = set()
+            deduped_raw: list[CensusRecord] = []
+            for rec in all_raw:
+                key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
+                if key not in seen:
+                    seen.add(key)
+                    deduped_raw.append(rec)
+            raw = SearchResult(census_year=1926, total=len(deduped_raw), records=deduped_raw, search_url=raw_url)
 
         matched = [
             rec for rec in raw.records
-            if (not first_name or (rec.first_name or "").lower() == first_name.lower())
+            if (not first_names or (rec.first_name or "").lower() in {n.lower() for n in first_names})
             and (not sex or not rec.sex or rec.sex.lower().startswith(sex.lower()[0]))
             and (age_1926 is None or rec.age is None
                  or (age_1926 - tol_before) <= rec.age <= (age_1926 + tol_after))
@@ -316,7 +315,8 @@ async def _do_link(
                 # name + age window is specific enough without it
                 old = await s.search_both_years(
                     surname=surname,
-                    first_name=first_name,
+                    first_names=first_names,
+                    first_name=first_names[0] if len(first_names) == 1 else "",
                     counties=counties or ([county] if county else []),
                     birth_year=birth_year,
                     age_before=tol_before,
@@ -326,9 +326,10 @@ async def _do_link(
             for r in old:
                 all_results.append(r)
 
+    name_label = f"{' / '.join(first_names) if first_names else ''} {surname}".strip()
+
     # No birth year — always show a results table regardless of match count
     if not birth_year:
-        name_label = f"{first_name} {surname}".strip()
         console.print()
         hint = "[dim]add --birth-year to link across 1911 & 1901[/dim]"
         count_label = f"[dim]{len(matched)} result(s)[/dim]" if matched else "[dim]no results[/dim]"
@@ -338,11 +339,10 @@ async def _do_link(
         return
 
     # Use the 1926 match as anchor for cross-year matching; fall back to a synthetic record
+    anchor_first = first_names[0] if first_names else ""
     anchor_1926 = matched[0] if matched else CensusRecord(
-        census_year=1926, surname=surname, first_name=first_name, age=age_1926
+        census_year=1926, surname=surname, first_name=anchor_first, age=age_1926
     )
-
-    name_label = f"{first_name} {surname}".strip()
     if birth_year:
         if tol_before == tol_after:
             birth_label = f"  [dim](born ~{birth_year} ±{tol_before}yr)[/dim]"

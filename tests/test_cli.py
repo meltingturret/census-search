@@ -217,8 +217,14 @@ class TestLinkCommand:
         assert mock_1926.search.call_count == 2
 
     def test_multiple_matches_no_household_fetch(self):
-        """Multiple 1926 matches do not trigger household fetch."""
-        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926(), _corrigan_1926()])
+        """Multiple distinct 1926 matches do not trigger household fetch."""
+        rec1 = CensusRecord(census_year=1926, surname="Corrigan", first_name="James",
+                            age=46, sex="Male", county="Kilkenny",
+                            townland_street="Lamogue", ded="Kilmaganny")
+        rec2 = CensusRecord(census_year=1926, surname="Corrigan", first_name="James",
+                            age=48, sex="Male", county="Tipperary",
+                            townland_street="Main Street", ded="Clonmel")
+        mock_1926, mock_old = _setup_link_mocks([rec1, rec2])
         with (
             patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
             patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),

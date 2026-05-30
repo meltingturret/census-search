@@ -143,6 +143,7 @@ class Census1901_1911Searcher:
         self,
         surname: str,
         first_name: str = "",
+        first_names: list[str] | None = None,
         county: str = "",
         counties: list[str] | None = None,
         sex: str = "",
@@ -166,6 +167,8 @@ class Census1901_1911Searcher:
         tol_before = age_before if age_before is not None else age_tolerance
         tol_after = age_after if age_after is not None else age_tolerance
         county_list = counties if counties else ([county] if county else [""])
+        # first_names list takes priority over the single first_name string
+        name_list = first_names if first_names else ([first_name] if first_name else [""])
 
         results = []
         for year in [1901, 1911]:
@@ -179,21 +182,22 @@ class Census1901_1911Searcher:
             merged_total = 0
             first_url = ""
             for c in county_list:
-                r = await self.search(
-                    surname=surname,
-                    first_name=first_name,
-                    county=c,
-                    sex=sex,
-                    census_year=year,
-                    age_from=age_from,
-                    age_to=age_to,
-                    exact=exact,
-                    max_results=max_results,
-                )
-                merged_records.extend(r.records)
-                merged_total += r.total
-                if not first_url:
-                    first_url = r.search_url
+                for fn in name_list:
+                    r = await self.search(
+                        surname=surname,
+                        first_name=fn,
+                        county=c,
+                        sex=sex,
+                        census_year=year,
+                        age_from=age_from,
+                        age_to=age_to,
+                        exact=exact,
+                        max_results=max_results,
+                    )
+                    merged_records.extend(r.records)
+                    merged_total += r.total
+                    if not first_url:
+                        first_url = r.search_url
 
             # Deduplicate by (surname, first_name, age, county)
             seen: set[tuple] = set()
