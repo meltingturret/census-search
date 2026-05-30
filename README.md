@@ -59,7 +59,7 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 **Browse without birth year** — returns all matches as a table:
 
 ```
-$ census-search link Corrigan --county Kilkenny --sex Male
+$ poetry run census-search link Corrigan --county Kilkenny --sex Male
 
 Corrigan  8 result(s)  add --birth-year to link across 1911 & 1901
  #   Surname    First Name   Age  Sex   County    Townland / Street  DED              Birthplace
@@ -72,7 +72,7 @@ Corrigan  8 result(s)  add --birth-year to link across 1911 & 1901
 **Link with birth year** — one row per census year with a confidence score:
 
 ```
-$ census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
+$ poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
 
 James Corrigan  (born ~1882 ±3yr)
  Year  Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace  Match
@@ -90,8 +90,8 @@ Household  Lamogue, Kilmaganny, Kilkenny
 **Multiple first name variants** — searches all variants and shows whichever name appears in the record:
 
 ```
-$ census-search link Corrigan --first-name "Joe,Joseph,Jos" --birth-year 1917 \
-    --county "Kilkenny,Tipperary" --sex Male
+$ poetry run census-search link Corrigan --first-name "Joe,Joseph,Jos" \
+    --birth-year 1917 --county "Kilkenny,Tipperary" --sex Male
 
 Joe / Joseph / Jos Corrigan  (born ~1917 ±3yr)
  Year  Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace  Match
@@ -103,7 +103,7 @@ Joe / Joseph / Jos Corrigan  (born ~1917 ±3yr)
 **Multi-county search** — merges results from both counties:
 
 ```
-$ census-search link Purcell --first-name Mary --birth-year 1887 --county "Kilkenny,Tipperary" --sex Female
+$ poetry run census-search link Purcell --first-name Mary --birth-year 1887 --county "Kilkenny,Tipperary" --sex Female
 
 Mary Purcell  (born ~1887 ±3yr)
  Year  Surname  First Name  Age  Sex     County    Townland / Street  DED                 Birthplace  Match
@@ -115,7 +115,7 @@ Mary Purcell  (born ~1887 ±3yr)
 **Expand household** — links each member back to 1911 & 1901:
 
 ```
-$ census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
+$ poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
 
 James Corrigan  (born ~1882 ±3yr)
  Year  Surname   First Name  Age  ...  Match
