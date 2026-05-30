@@ -150,13 +150,22 @@ If the target person is not in 1926 (e.g. away on military service), the first s
 ### `browse` — browse by county/DED (no name required)
 
 ```bash
+# Browse all records in a county
 poetry run census-search browse --county Dublin
+
+# Browse a specific DED
 poetry run census-search browse --county Kerry --ded "Tralee Urban"
-poetry run census-search browse --county Kilkenny --max 100
+
+# Filter by surname within a county
+poetry run census-search browse Corrigan --county Kilkenny
+
+# Increase result limit
+poetry run census-search browse Corrigan --county Kilkenny --max 100
 ```
 
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
+| Argument / Flag | Short | Default | Description |
+|-----------------|-------|---------|-------------|
+| `surname` | | | Surname to filter by (optional positional argument) |
 | `--county` | `-c` | | County to browse |
 | `--ded` | `-d` | | District Electoral Division |
 | `--max` | `-n` | 30 | Max results to return |

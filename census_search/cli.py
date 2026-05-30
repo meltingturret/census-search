@@ -414,29 +414,32 @@ async def _do_link(
 
 @app.command()
 def browse(
+    surname: str = typer.Argument("", help="Surname to filter by (optional)"),
     county: str = typer.Option("", "--county", "-c", help="County to browse"),
     ded: str = typer.Option("", "--ded", "-d", help="DED to browse"),
     max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
     headless: bool = typer.Option(True, "--headless/--no-headless"),
 ):
-    """Browse 1926 census records by county and DED (no name required)."""
-    asyncio.run(_do_browse(county=county, ded=ded, max_results=max_results, headless=headless))
+    """Browse 1926 census records by county and/or surname."""
+    asyncio.run(_do_browse(surname=surname, county=county, ded=ded, max_results=max_results, headless=headless))
 
 
-async def _do_browse(county: str, ded: str, max_results: int, headless: bool):
+async def _do_browse(surname: str, county: str, ded: str, max_results: int, headless: bool):
+    label = " — ".join(filter(None, [surname or None, county or None, ded or None]))
     console.print("\n[bold]📂 Browsing 1926 census[/bold]"
-                  + (f" — [yellow]{county}[/yellow]" if county else ""))
+                  + (f" — [yellow]{label}[/yellow]" if label else ""))
 
     async with Census1926Searcher(headless=headless) as searcher:
         with console.status("Loading…"):
-            result = await searcher.search(county=county, ded=ded, max_results=max_results)
+            result = await searcher.search(surname=surname, county=county, ded=ded, max_results=max_results)
 
     if not result.records:
         console.print("[red]No results found.[/red]")
         raise typer.Exit(1)
 
     console.print(f"\n[green]{result.total} record(s) — showing {len(result.records)}[/green]")
-    console.print(_record_table(result.records, f"1926 Census — {county or 'All Counties'}"))
+    title = "1926 Census" + (f" — {label}" if label else "")
+    console.print(_record_table(result.records, title))
 
 
 if __name__ == "__main__":
