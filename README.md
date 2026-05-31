@@ -172,6 +172,46 @@ poetry run census-search browse Corrigan --county Kilkenny --max 100
 
 ---
 
+### `1901` / `1911` — browse those censuses directly (no 1926 anchor needed)
+
+```bash
+# Browse all Corrigans in Tipperary in 1901
+poetry run census-search 1901 Corrigan --county Tipperary --max 300
+
+# Browse all Corrigans in Tipperary in 1911
+poetry run census-search 1911 Corrigan --county Tipperary --max 300
+
+# Filter by first name and sex
+poetry run census-search 1911 Corrigan --first-name James --county Kilkenny --sex Male
+
+# Multiple name variants, multiple counties
+poetry run census-search 1901 Murphy --first-name "Mary,Maria" --county "Kilkenny,Tipperary"
+```
+
+| Argument / Flag | Short | Default | Description |
+|-----------------|-------|---------|-------------|
+| `surname` | | | Surname to search (optional positional argument) |
+| `--first-name` | `-f` | | First name — comma-separate variants (e.g. `Joe,Joseph`) |
+| `--county` | `-c` | | County or comma-separated counties |
+| `--sex` | `-s` | | `Male` or `Female` — enforced client-side |
+| `--max` | `-n` | 30 | Max results to return |
+
+#### Output example
+
+```
+$ poetry run census-search 1911 Corrigan --county Tipperary --max 300
+
+📂 Browsing 1911 census — Corrigan
+
+142 record(s) — showing 142
+ #   Surname    First Name   Age  Sex   County     Townland / Street  DED          Birthplace
+ 1   Corrigan   James         29  Male  Tipperary  Main Street        Clonmel
+ 2   Corrigan   Mary          24  Female Tipperary Barrack Street     Clonmel
+ ...
+```
+
+---
+
 ## How it works
 
 1. **Search 1926**: Playwright opens a Chromium browser, intercepts the underlying API call, and extracts structured results. Filtering by first name, sex, and age is done client-side.
