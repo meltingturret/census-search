@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 from census_search.cli import app
 from census_search.models import CensusRecord, SearchResult
 
-runner = CliRunner()
+runner = CliRunner(env={"NO_COLOR": "1"})
 
 
 def _make_result(year: int, records: list[CensusRecord], total: int | None = None) -> SearchResult:
