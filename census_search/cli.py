@@ -521,7 +521,7 @@ async def _do_census_year(
             ]
 
         if not deduped:
-            console.print(f"[dim]No results found.[/dim]")
+            console.print("[dim]No results found.[/dim]")
             return
 
         console.print(f"\n[green]{total} record(s) — showing {len(deduped[:max_results])}[/green]")
