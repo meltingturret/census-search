@@ -39,12 +39,22 @@ git checkout -b feature/<name>
   )"
   ```
 
-## Before pushing
+## Before every PR — mandatory checklist
+
+**Always run both of these before opening or updating a PR. No exceptions.**
 
 ```bash
-poetry run pytest -v          # all tests must pass
-poetry run ruff check .       # no lint errors (line length 120)
+poetry run pytest -v          # all tests must pass — fix failures before pushing
+poetry run ruff check .       # no lint errors (line length 120) — fix before pushing
 ```
+
+Or with make:
+
+```bash
+make test && make lint
+```
+
+If either command fails, fix the issue and re-run before continuing. Do not open a PR with a failing test suite or lint errors.
 
 ## Pull requests
 
