@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
@@ -10,6 +11,11 @@ from census_search.cli import app
 from census_search.models import CensusRecord, SearchResult
 
 runner = CliRunner(env={"NO_COLOR": "1"})
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escape codes for reliable string assertions."""
+    return re.sub(r"\x1b\[[0-9;]*[mGKHF]", "", text)
 
 
 def _make_result(year: int, records: list[CensusRecord], total: int | None = None) -> SearchResult:
@@ -49,16 +55,17 @@ class TestHelpOutput:
     def test_link_help(self):
         result = runner.invoke(app, ["link", "--help"])
         assert result.exit_code == 0
-        assert "--birth-year" in result.output
-        assert "--first-name" in result.output
-        assert "--county" in result.output
-        assert "--sex" in result.output
-        assert "--expand" in result.output
+        out = _plain(result.output)
+        assert "--birth-year" in out
+        assert "--first-name" in out
+        assert "--county" in out
+        assert "--sex" in out
+        assert "--expand" in out
 
     def test_browse_help(self):
         result = runner.invoke(app, ["browse", "--help"])
         assert result.exit_code == 0
-        assert "--county" in result.output
+        assert "--county" in _plain(result.output)
 
 
 # ---------------------------------------------------------------------------
