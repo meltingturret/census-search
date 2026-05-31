@@ -477,3 +477,80 @@ class TestBrowseCommand:
         with patch("census_search.cli.Census1926Searcher", return_value=mock_1926):
             result = runner.invoke(app, ["browse", "--county", "Kilkenny"])
         assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# search command (1901/1911)
+# ---------------------------------------------------------------------------
+
+def _corrigan_1911() -> CensusRecord:
+    return CensusRecord(
+        census_year=1911, surname="Corrigan", first_name="James",
+        age=29, sex="Male", county="Kilkenny",
+        townland_street="Lamogue", ded="Kilmaganny",
+    )
+
+
+def _setup_search_mock(records_1911=None, records_1901=None):
+    mock_old = AsyncMock()
+    mock_old.__aenter__ = AsyncMock(return_value=mock_old)
+    mock_old.__aexit__ = AsyncMock(return_value=False)
+
+    async def _search_side_effect(**kwargs):
+        yr = kwargs.get("census_year")
+        if yr == 1911:
+            return _make_result(1911, records_1911 or [])
+        return _make_result(1901, records_1901 or [])
+
+    mock_old.search = AsyncMock(side_effect=_search_side_effect)
+    return mock_old
+
+
+class TestSearchCommand:
+    def test_exits_0_with_results(self):
+        mock_old = _setup_search_mock(records_1911=[_corrigan_1911()])
+        with patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old):
+            result = runner.invoke(app, ["search", "Corrigan", "--county", "Kilkenny"])
+        assert result.exit_code == 0
+
+    def test_shows_surname_in_output(self):
+        mock_old = _setup_search_mock(records_1911=[_corrigan_1911()])
+        with patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old):
+            result = runner.invoke(app, ["search", "Corrigan", "--county", "Kilkenny"])
+        assert "Corrigan" in result.output
+
+    def test_year_filter_searches_only_that_year(self):
+        mock_old = _setup_search_mock(records_1911=[_corrigan_1911()])
+        with patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old):
+            runner.invoke(app, ["search", "Corrigan", "--year", "1911"])
+        calls = [c.kwargs.get("census_year") for c in mock_old.search.call_args_list]
+        assert 1911 in calls
+        assert 1901 not in calls
+
+    def test_invalid_year_exits_1(self):
+        mock_old = _setup_search_mock()
+        with patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old):
+            result = runner.invoke(app, ["search", "Corrigan", "--year", "1920"])
+        assert result.exit_code == 1
+
+    def test_sex_filter_applied_client_side(self):
+        male = CensusRecord(census_year=1911, surname="Corrigan", first_name="James",
+                            age=29, sex="Male", county="Kilkenny")
+        female = CensusRecord(census_year=1911, surname="Corrigan", first_name="Mary",
+                              age=27, sex="Female", county="Kilkenny")
+        mock_old = _setup_search_mock(records_1911=[male, female])
+        with patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old):
+            result = runner.invoke(app, ["search", "Corrigan", "--sex", "Male", "--year", "1911"])
+        assert "James" in result.output
+        assert "Mary" not in result.output
+
+    def test_no_results_shows_dim_message(self):
+        mock_old = _setup_search_mock()
+        with patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old):
+            result = runner.invoke(app, ["search", "Corrigan", "--year", "1911"])
+        assert result.exit_code == 0
+        assert "no results" in result.output
+
+    def test_search_appears_in_help(self):
+        result = runner.invoke(app, ["--help"])
+        assert "search" in result.output

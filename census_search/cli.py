@@ -438,5 +438,92 @@ async def _do_browse(county: str, ded: str, headless: bool):
     console.print(_record_table(result.records, f"1926 Census — {county or 'All Counties'}"))
 
 
+@app.command()
+def search(
+    surname: str = typer.Argument("", help="Surname to search for (optional)"),
+    first_name: str = typer.Option("", "--first-name", "-f", help="First name — comma-separate variants"),
+    county: str = typer.Option("", "--county", "-c", help="County or comma-separated counties"),
+    year: Optional[int] = typer.Option(None, "--year", "-y", help="Census year: 1901 or 1911 (default: both)"),
+    sex: str = typer.Option("", "--sex", "-s", help="Sex filter (Male or Female)"),
+    max_results: int = typer.Option(30, "--max", "-n", help="Max results per year"),
+):
+    """
+    Browse the 1901 and 1911 censuses directly (no 1926 anchor needed).
+
+    Examples:
+
+    \b
+      census-search search Corrigan --county Kilkenny
+      census-search search Corrigan --first-name James --county Kilkenny --year 1911
+      census-search search --county Kilkenny --year 1901
+    """
+    asyncio.run(_do_search(
+        surname=surname, first_name=first_name, county=county,
+        year=year, sex=sex, max_results=max_results,
+    ))
+
+
+async def _do_search(
+    surname: str,
+    first_name: str,
+    county: str,
+    year: Optional[int],
+    sex: str,
+    max_results: int,
+):
+    if year and year not in (1901, 1911):
+        console.print("[red]--year must be 1901 or 1911[/red]")
+        raise typer.Exit(1)
+
+    counties = [c.strip() for c in county.split(",") if c.strip()] if county else [""]
+    first_names = [n.strip() for n in first_name.split(",") if n.strip()] if first_name else [""]
+    years = [year] if year else [1901, 1911]
+
+    label_parts = [" / ".join(n for n in first_names if n), surname]
+    name_label = " ".join(p for p in label_parts if p) or "All records"
+    console.print(f"\n[bold]📂 Browsing {' & '.join(str(y) for y in sorted(years))} census[/bold]"
+                  + (f" — [yellow]{name_label}[/yellow]" if name_label != "All records" else ""))
+
+    async with Census1901_1911Searcher() as s:
+        for yr in sorted(years):
+            all_records: list[CensusRecord] = []
+            total = 0
+            with console.status(f"Searching {yr}…"):
+                for c in counties:
+                    for fn in first_names:
+                        r = await s.search(
+                            surname=surname,
+                            first_name=fn,
+                            county=c,
+                            census_year=yr,
+                            max_results=max_results,
+                        )
+                        all_records.extend(r.records)
+                        total += r.total
+
+            # Deduplicate
+            seen: set[tuple] = set()
+            deduped: list[CensusRecord] = []
+            for rec in all_records:
+                key = (rec.surname.lower(), rec.first_name.lower(), rec.age, rec.county.lower())
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(rec)
+
+            # Client-side sex filter
+            if sex:
+                deduped = [
+                    rec for rec in deduped
+                    if not rec.sex or rec.sex.lower().startswith(sex.lower()[0])
+                ]
+
+            if not deduped:
+                console.print(f"[dim]{yr}: no results[/dim]")
+                continue
+
+            console.print(f"\n[green]{yr}: {total} record(s) — showing {len(deduped[:max_results])}[/green]")
+            console.print(_record_table(deduped[:max_results], f"{yr} Census"))
+
+
 if __name__ == "__main__":
     app()

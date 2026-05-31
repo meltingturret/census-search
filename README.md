@@ -161,6 +161,51 @@ poetry run census-search browse --county Kerry --ded "Tralee Urban"
 
 ---
 
+### `search` — browse 1901 & 1911 directly (no 1926 anchor needed)
+
+```bash
+# Browse all Corrigans in Kilkenny across both years
+poetry run census-search search Corrigan --county Kilkenny
+
+# Filter to a specific year
+poetry run census-search search Corrigan --first-name James --county Kilkenny --year 1911
+
+# Sex filter, multiple counties
+poetry run census-search search Murphy --county "Kilkenny,Tipperary" --sex Female --year 1901
+
+# Increase result limit
+poetry run census-search search Corrigan --county Kilkenny --max 100
+```
+
+| Argument / Flag | Short | Default | Description |
+|-----------------|-------|---------|-------------|
+| `surname` | | | Surname to search (optional positional argument) |
+| `--first-name` | `-f` | | First name — comma-separate variants (e.g. `Joe,Joseph`) |
+| `--county` | `-c` | | County or comma-separated counties |
+| `--year` | `-y` | both | Census year: `1901` or `1911` (omit for both) |
+| `--sex` | `-s` | | `Male` or `Female` — enforced client-side |
+| `--max` | `-n` | 30 | Max results per year |
+
+#### Output example
+
+```
+$ poetry run census-search search Corrigan --first-name James --county Kilkenny
+
+📂 Browsing 1901 & 1911 census — James Corrigan
+
+1901: 24 record(s) — showing 30
+ #   Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace
+ 1   Corrigan   James         19  Male  Kilkenny  Lamogue            Kilmaganny
+ ...
+
+1911: 18 record(s) — showing 18
+ #   Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace
+ 1   Corrigan   James         29  Male  Kilkenny  Lamogue            Kilmaganny
+ ...
+```
+
+---
+
 ## How it works
 
 1. **Search 1926**: Playwright opens a Chromium browser, intercepts the underlying API call, and extracts structured results. Filtering by first name, sex, and age is done client-side.
