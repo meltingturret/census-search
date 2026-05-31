@@ -1,12 +1,6 @@
 """Tests for census searcher parsing logic (no browser required)."""
 
-from census_search.searchers.census_1821_1851 import (
-    BASE_URL,
-    SEARCH_URL,
-    _TableParser,
-    _build_params,
-    _parse_row,
-)
+from census_search.searchers.census_1821_1851 import BASE_URL, _parse_row, _TableParser
 from census_search.searchers.census_1821_1851 import _build_params as _build_params_1821
 from census_search.searchers.census_1901_1911 import (
     _build_params,
