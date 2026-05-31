@@ -13,9 +13,9 @@ from census_search.searchers.base import PlaywrightSearcher
 
 SEARCH_BASE = "https://nationalarchives.ie/collections/search-the-1926-census/search-results/"
 
-# Known API pattern — discovered by intercepting network requests.
-# The site calls a backend API; we capture it at runtime.
-API_PATTERN = "/api/"
+# Known API pattern — the site calls c26-api.nationalarchives.ie.
+# Narrow enough to exclude termly.io and facets endpoints.
+API_PATTERN = "query_c26a"
 
 COUNTIES = [
     "Carlow", "Cavan", "Clare", "Cork", "Donegal", "Dublin",
@@ -133,6 +133,7 @@ class Census1926Searcher(PlaywrightSearcher):
         sex: str = "",
         exact: bool = False,
         max_results: int = 100,
+        debug: bool = False,
     ) -> SearchResult:
         url = _build_search_url(surname, first_name, county, townland, ded, sex, exact)
         page = await self._new_page()
@@ -141,14 +142,20 @@ class Census1926Searcher(PlaywrightSearcher):
 
         try:
             api_url, data = await self._intercept_api_call(
-                page, url, API_PATTERN, wait_selector=".search-results, [data-results], table"
+                page, url, API_PATTERN,
+                wait_selector=".search-results, [data-results], table",
+                debug=debug,
             )
 
             if data is None:
+                if debug:
+                    print("\n[DEBUG] API interception failed — falling back to DOM parser")
                 # Fallback: parse DOM if API interception failed
                 records, total = await self._parse_dom_results(page)
             else:
-                records, total, next_qs = self._parse_api_response(data)
+                if debug:
+                    print(f"\n[DEBUG] API intercepted at: {api_url}")
+                records, total, next_qs = self._parse_api_response(data, debug=debug)
                 if api_url:
                     Census1926Searcher._api_base_url = api_url
                     Census1926Searcher._next_qs = next_qs
@@ -170,7 +177,9 @@ class Census1926Searcher(PlaywrightSearcher):
             search_url=url,
         )
 
-    def _parse_api_response(self, data: dict | list) -> tuple[list[CensusRecord], int, Optional[str]]:
+    def _parse_api_response(
+        self, data: dict | list, debug: bool = False
+    ) -> tuple[list[CensusRecord], int, Optional[str]]:
         """
         Parse the API JSON response.
         Returns (records, total, next_page_querystring).
@@ -196,13 +205,21 @@ class Census1926Searcher(PlaywrightSearcher):
                 or len(items)
             )
             next_qs = meta.get("next")
-            for item in items:
+            for i, item in enumerate(items):
                 row = item.get("_source", item) if isinstance(item, dict) else {}
+                if debug and i == 0:
+                    import json
+                    print("\n[DEBUG] Raw API record keys:", list(row.keys()))
+                    print("[DEBUG] Raw API record:", json.dumps(row, indent=2, default=str))
                 records.append(_parse_record_from_row(row))
 
         elif isinstance(data, list):
             total = len(data)
-            for item in data:
+            for i, item in enumerate(data):
+                if debug and i == 0:
+                    import json
+                    print("\n[DEBUG] Raw API record keys:", list(item.keys()))
+                    print("[DEBUG] Raw API record:", json.dumps(item, indent=2, default=str))
                 records.append(_parse_record_from_row(item))
 
         return records, int(total), next_qs
