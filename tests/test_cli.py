@@ -584,3 +584,205 @@ class TestCensus1901Command:
         result = runner.invoke(app, ["--help"])
         assert "1901" in result.output
         assert "1911" in result.output
+
+
+# ---------------------------------------------------------------------------
+# 1821 / 1831 / 1841 / 1851 commands
+# ---------------------------------------------------------------------------
+
+def _setup_fragment_mock(records: list[CensusRecord], census_year: int):
+    mock = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    mock.search = AsyncMock(return_value=_make_result(census_year, records))
+    return mock
+
+
+def _murphy_1851() -> CensusRecord:
+    return CensusRecord(
+        census_year=1851, surname="Murphy", first_name="Eliza",
+        age=43, sex="Female", county="Antrim",
+        townland_street="Montiaghs", ded="Aghagallon",
+        birthplace="Antrim",
+    )
+
+
+def _corrigan_1831() -> CensusRecord:
+    return CensusRecord(
+        census_year=1831, surname="Corrigan", first_name="Robt",
+        county="", townland_street="Bishop Street", ded="Templemore",
+    )
+
+
+def _murphy_1821() -> CensusRecord:
+    return CensusRecord(
+        census_year=1821, surname="Murphy", first_name="Bernard",
+        age=39, county="Meath", townland_street="Manorland", ded="Trim",
+        relationship="Head",
+    )
+
+
+class TestCensus1851Command:
+    def test_exits_0_with_results(self):
+        mock = _setup_fragment_mock([_murphy_1851()], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1851", "Murphy", "--county", "Antrim"])
+        assert result.exit_code == 0
+
+    def test_shows_surname_in_output(self):
+        mock = _setup_fragment_mock([_murphy_1851()], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1851", "Murphy"])
+        assert "Murphy" in result.output
+
+    def test_passes_correct_year_to_searcher(self):
+        mock = _setup_fragment_mock([_murphy_1851()], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            runner.invoke(app, ["1851", "Murphy"])
+        assert mock.search.call_args.kwargs["census_year"] == 1851
+
+    def test_sex_filter_applied_client_side(self):
+        male = CensusRecord(census_year=1851, surname="Murphy", first_name="Robert",
+                            age=8, sex="Male", county="Antrim")
+        female = CensusRecord(census_year=1851, surname="Murphy", first_name="Eliza",
+                              age=43, sex="Female", county="Antrim")
+        mock = _setup_fragment_mock([male, female], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1851", "Murphy", "--sex", "Male"])
+        assert "Robert" in result.output
+        assert "Eliza" not in result.output
+
+    def test_no_results_exits_0_with_message(self):
+        mock = _setup_fragment_mock([], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1851", "Murphy"])
+        assert result.exit_code == 0
+        assert "No results" in result.output
+
+    def test_max_passed_to_searcher(self):
+        mock = _setup_fragment_mock([_murphy_1851()], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            runner.invoke(app, ["1851", "Murphy", "--max", "50"])
+        assert mock.search.call_args.kwargs["max_results"] == 50
+
+    def test_county_passed_to_searcher(self):
+        mock = _setup_fragment_mock([_murphy_1851()], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            runner.invoke(app, ["1851", "Murphy", "--county", "Antrim"])
+        assert mock.search.call_args.kwargs["county"] == "Antrim"
+
+    def test_shows_age_in_output(self):
+        mock = _setup_fragment_mock([_murphy_1851()], 1851)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1851", "Murphy"])
+        assert " 43 " in result.output
+
+
+class TestCensus1841Command:
+    def test_exits_0_with_results(self):
+        rec = CensusRecord(census_year=1841, surname="Corrigan", first_name="Catherine",
+                           age=70, sex="Female", county="Kilkenny")
+        mock = _setup_fragment_mock([rec], 1841)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1841", "Corrigan"])
+        assert result.exit_code == 0
+
+    def test_passes_correct_year_to_searcher(self):
+        rec = CensusRecord(census_year=1841, surname="Corrigan", age=70)
+        mock = _setup_fragment_mock([rec], 1841)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            runner.invoke(app, ["1841", "Corrigan"])
+        assert mock.search.call_args.kwargs["census_year"] == 1841
+
+    def test_sex_filter_applied_client_side(self):
+        male = CensusRecord(census_year=1841, surname="Murphy", first_name="John",
+                            age=30, sex="Male", county="Cork")
+        female = CensusRecord(census_year=1841, surname="Murphy", first_name="Brigid",
+                              age=28, sex="Female", county="Cork")
+        mock = _setup_fragment_mock([male, female], 1841)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1841", "Murphy", "--sex", "Female"])
+        assert "Brigid" in result.output
+        assert "John" not in result.output
+
+
+class TestCensus1831Command:
+    def test_exits_0_with_results(self):
+        mock = _setup_fragment_mock([_corrigan_1831()], 1831)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1831", "Corrigan"])
+        assert result.exit_code == 0
+
+    def test_passes_correct_year_to_searcher(self):
+        mock = _setup_fragment_mock([_corrigan_1831()], 1831)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            runner.invoke(app, ["1831", "Corrigan"])
+        assert mock.search.call_args.kwargs["census_year"] == 1831
+
+    def test_shows_townland_in_output(self):
+        mock = _setup_fragment_mock([_corrigan_1831()], 1831)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1831", "Corrigan"])
+        assert "Bishop" in result.output
+
+    def test_no_sex_option(self):
+        """1831 command has no --sex flag (no individual sex data in that census)."""
+        mock = _setup_fragment_mock([_corrigan_1831()], 1831)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1831", "Corrigan", "--sex", "Male"])
+        assert result.exit_code != 0  # unknown option
+
+
+class TestCensus1821Command:
+    def test_exits_0_with_results(self):
+        mock = _setup_fragment_mock([_murphy_1821()], 1821)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1821", "Murphy", "--county", "Meath"])
+        assert result.exit_code == 0
+
+    def test_passes_correct_year_to_searcher(self):
+        mock = _setup_fragment_mock([_murphy_1821()], 1821)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            runner.invoke(app, ["1821", "Murphy"])
+        assert mock.search.call_args.kwargs["census_year"] == 1821
+
+    def test_shows_age_in_output(self):
+        mock = _setup_fragment_mock([_murphy_1821()], 1821)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1821", "Murphy"])
+        assert " 39 " in result.output
+
+    def test_no_sex_option(self):
+        """1821 command has no --sex flag (no sex column in 1821 census)."""
+        mock = _setup_fragment_mock([_murphy_1821()], 1821)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1821", "Murphy", "--sex", "Male"])
+        assert result.exit_code != 0  # unknown option
+
+    def test_no_results_exits_0_with_message(self):
+        mock = _setup_fragment_mock([], 1821)
+        with patch("census_search.cli.Census1821_1851Searcher", return_value=mock):
+            result = runner.invoke(app, ["1821", "Murphy"])
+        assert result.exit_code == 0
+        assert "No results" in result.output
+
+
+class TestFragmentCommandsInHelp:
+    def test_all_fragment_years_in_help(self):
+        result = runner.invoke(app, ["--help"])
+        out = result.output
+        assert "1851" in out
+        assert "1841" in out
+        assert "1831" in out
+        assert "1821" in out
+
+    def test_1851_help(self):
+        result = runner.invoke(app, ["1851", "--help"])
+        assert result.exit_code == 0
+        assert "--county" in _plain(result.output)
+        assert "--sex" in _plain(result.output)
+
+    def test_1831_help_no_sex_flag(self):
+        result = runner.invoke(app, ["1831", "--help"])
+        assert result.exit_code == 0
+        assert "--sex" not in _plain(result.output)

@@ -23,6 +23,7 @@ from rich.table import Table
 
 from census_search.linker import best_scored_match
 from census_search.models import CensusRecord, SearchResult
+from census_search.searchers.census_1821_1851 import Census1821_1851Searcher
 from census_search.searchers.census_1901_1911 import Census1901_1911Searcher
 from census_search.searchers.census_1926 import Census1926Searcher
 
@@ -436,20 +437,26 @@ def browse(
     county: str = typer.Option("", "--county", "-c", help="County to browse"),
     ded: str = typer.Option("", "--ded", "-d", help="DED to browse"),
     max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
+    debug: bool = typer.Option(False, "--debug", help="Print raw API record for first result"),
     headless: bool = typer.Option(True, "--headless/--no-headless"),
 ):
     """Browse 1926 census records by county and/or surname."""
-    asyncio.run(_do_browse(surname=surname, county=county, ded=ded, max_results=max_results, headless=headless))
+    asyncio.run(_do_browse(
+        surname=surname, county=county, ded=ded,
+        max_results=max_results, debug=debug, headless=headless,
+    ))
 
 
-async def _do_browse(surname: str, county: str, ded: str, max_results: int, headless: bool):
+async def _do_browse(surname: str, county: str, ded: str, max_results: int, debug: bool, headless: bool):
     label = " — ".join(filter(None, [surname or None, county or None, ded or None]))
     console.print("\n[bold]📂 Browsing 1926 census[/bold]"
                   + (f" — [yellow]{label}[/yellow]" if label else ""))
 
     async with Census1926Searcher(headless=headless) as searcher:
         with console.status("Loading…"):
-            result = await searcher.search(surname=surname, county=county, ded=ded, max_results=max_results)
+            result = await searcher.search(
+                surname=surname, county=county, ded=ded, max_results=max_results, debug=debug,
+            )
 
     if not result.records:
         console.print("[red]No results found.[/red]")
@@ -544,6 +551,92 @@ async def _do_census_year(
 
         console.print(f"\n[green]{total} record(s) — showing {len(deduped[:max_results])}[/green]")
         console.print(_record_table(deduped[:max_results], f"{year} Census"))
+
+
+@app.command(name="1851")
+def census_1851(
+    surname: str = typer.Argument("", help="Surname to search for (optional)"),
+    first_name: str = typer.Option("", "--first-name", "-f", help="First name"),
+    county: str = typer.Option("", "--county", "-c", help="County"),
+    sex: str = typer.Option("", "--sex", "-s", help="Sex filter (Male or Female)"),
+    max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
+):
+    """Browse the 1851 census fragment (National Archives)."""
+    asyncio.run(_do_census_fragment(surname=surname, first_name=first_name, county=county,
+                                    sex=sex, year=1851, max_results=max_results))
+
+
+@app.command(name="1841")
+def census_1841(
+    surname: str = typer.Argument("", help="Surname to search for (optional)"),
+    first_name: str = typer.Option("", "--first-name", "-f", help="First name"),
+    county: str = typer.Option("", "--county", "-c", help="County"),
+    sex: str = typer.Option("", "--sex", "-s", help="Sex filter (Male or Female)"),
+    max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
+):
+    """Browse the 1841 census fragment (National Archives)."""
+    asyncio.run(_do_census_fragment(surname=surname, first_name=first_name, county=county,
+                                    sex=sex, year=1841, max_results=max_results))
+
+
+@app.command(name="1831")
+def census_1831(
+    surname: str = typer.Argument("", help="Surname to search for (optional)"),
+    first_name: str = typer.Option("", "--first-name", "-f", help="First name"),
+    county: str = typer.Option("", "--county", "-c", help="County"),
+    max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
+):
+    """Browse the 1831 census fragment (National Archives)."""
+    asyncio.run(_do_census_fragment(surname=surname, first_name=first_name, county=county,
+                                    sex="", year=1831, max_results=max_results))
+
+
+@app.command(name="1821")
+def census_1821(
+    surname: str = typer.Argument("", help="Surname to search for (optional)"),
+    first_name: str = typer.Option("", "--first-name", "-f", help="First name"),
+    county: str = typer.Option("", "--county", "-c", help="County"),
+    max_results: int = typer.Option(30, "--max", "-n", help="Max results to return"),
+):
+    """Browse the 1821 census fragment (National Archives)."""
+    asyncio.run(_do_census_fragment(surname=surname, first_name=first_name, county=county,
+                                    sex="", year=1821, max_results=max_results))
+
+
+async def _do_census_fragment(
+    surname: str,
+    first_name: str,
+    county: str,
+    sex: str,
+    year: int,
+    max_results: int,
+):
+    name_label = " ".join(filter(None, [first_name, surname]))
+    console.print(f"\n[bold]📂 Browsing {year} census fragment[/bold]"
+                  + (f" — [yellow]{name_label}[/yellow]" if name_label else ""))
+
+    async with Census1821_1851Searcher() as s:
+        with console.status(f"Searching {year}…"):
+            result = await s.search(
+                census_year=year,
+                surname=surname,
+                first_name=first_name,
+                county=county,
+                sex=sex,
+                max_results=max_results,
+            )
+
+    if not result.records:
+        console.print("[dim]No results found.[/dim]")
+        return
+
+    # Client-side sex filter (1831 has no sex field; 1821 has no sex field either)
+    records = result.records
+    if sex:
+        records = [r for r in records if not r.sex or r.sex.lower().startswith(sex.lower()[0])]
+
+    console.print(f"\n[green]{len(records)} record(s)[/green]")
+    console.print(_record_table(records, f"{year} Census Fragment"))
 
 
 if __name__ == "__main__":
