@@ -1,0 +1,53 @@
+# Changelog
+
+All notable changes to this project will be documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Versioning follows [Semantic Versioning](https://semver.org/).
+
+---
+
+## [Unreleased]
+
+---
+
+## [0.5.0] - 2026-05-31
+
+### Added
+- `census-search 1901` and `census-search 1911` commands — browse either census directly without a 1926 anchor
+- `CLAUDE.md` — architecture guide for Claude Code
+- `AGENTS.md` — constraints and conventions for AI agents
+- `ai-prompts/` folder with reusable prompts for tracing ancestors, debugging, feature requests, GitHub workflow
+
+## [0.4.0] - 2026-05-31
+
+### Added
+- `browse` command now accepts optional surname positional argument: `census-search browse Corrigan --county Kilkenny`
+- `--max` / `-n` flag on `browse` command (default 30); output shows `N record(s) — showing M`
+
+## [0.3.0] - 2026-05-31
+
+### Added
+- `--age-before N` / `--age-after N` flags for asymmetric birth-year window
+- Multi-variant first name support via comma-separated `--first-name "Joe,Joseph,Jos"`
+- Output label shows `±3yr` for symmetric windows, `-5/+10yr` for asymmetric
+
+## [0.2.0] - 2026-05-31
+
+### Added
+- Fuzzy/phonetic surname matching (Soundex + difflib) — catches spelling variants like Corrigan/Corigan
+- Multi-county search via comma-separated `--county "Kilkenny,Tipperary"`
+- Confidence scoring with Match % column (green ≥80%, yellow ≥55%)
+- Relationship-aware linking (Son↔Scholar, Daughter↔Scholar etc.)
+- `--birth-year` is now optional — omit to browse all 1926 matches as a table
+- `--sex` filter enforced client-side; records with no sex field are kept
+
+## [0.1.0] - 2026-05-31
+
+### Added
+- Initial release
+- `link` command: search 1926, link to 1911 and 1901 by birth year
+- Household display as Rich table (auto-shown on single match, `--expand` for all members)
+- Birth year label with `±3yr` tolerance indicator
+- Primary person excluded from household table
+- `browse` command: browse 1926 by county and DED
+- `--sex`, `--county`, `--first-name`, `--age-tolerance`, `--max`, `--expand`, `--no-headless` flags

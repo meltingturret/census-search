@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+from importlib.metadata import version as _pkg_version
 from typing import Optional
 
 import typer
@@ -33,8 +34,25 @@ app = typer.Typer(
 console = Console()
 
 
+def _version_callback(value: bool):
+    if value:
+        try:
+            v = _pkg_version("census-search")
+        except Exception:
+            v = "unknown"
+        typer.echo(f"census-search {v}")
+        raise typer.Exit(0)
+
+
 @app.callback()
-def main(ctx: typer.Context):
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False, "--version", "-V",
+        callback=_version_callback, is_eager=True,
+        help="Show version and exit.",
+    ),
+):
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit(0)
