@@ -10,6 +10,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.6.0] - 2026-05-31
+
+### Added
+- `census-search 1851`, `1841`, `1831`, `1821` commands — browse surviving pre-Famine census fragments from the National Archives
+- `Census1821_1851Searcher` — scrapes the National Archives JSP search page via httpx; no browser required; handles pagination and per-year column layouts
+- PyPI publish workflow using OIDC trusted publishing (triggered on GitHub Release)
+- `COMMERCIAL_LICENSE.md` — commercial licensing terms for organisations over $1M/year revenue
+
+### Changed
+- License changed from Apache 2.0 to Polyform Small Business License 1.0.0
+- `pyproject.toml` migrated to PEP 621 `[project]` table (Poetry 2.x)
+- README updated with pre-Famine commands, field availability table, and license section
+
+---
+
 ## [0.5.0] - 2026-05-31
 
 ### Added

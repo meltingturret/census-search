@@ -1,6 +1,6 @@
 [project]
 name = "census-search"
-version = "0.5.0"
+version = "0.6.0"
 description = "CLI tool for tracing individuals across Irish National Archives census records (1926, 1911, 1901, 1851, 1841, 1831, 1821)"
 authors = [
     {name = "Joe Corrigan", email = "meltingturret@gmail.com"}
