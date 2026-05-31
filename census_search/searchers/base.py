@@ -44,6 +44,7 @@ class PlaywrightSearcher:
         navigate_url: str,
         api_pattern: str,
         wait_selector: str,
+        debug: bool = False,
     ) -> tuple[Optional[str], Optional[dict]]:
         """
         Navigate to a URL and intercept API calls, returning the one that
@@ -51,12 +52,19 @@ class PlaywrightSearcher:
         Returns (api_url, response_json).
         """
         candidates: list[tuple[str, Any]] = []
+        all_json: list[tuple[str, Any]] = []  # for debug only
 
         async def handle_response(response: Response):
             if api_pattern in response.url:
                 try:
                     body = await response.json()
                     candidates.append((response.url, body))
+                except Exception:
+                    pass
+            if debug:
+                try:
+                    body = await response.json()
+                    all_json.append((response.url, body))
                 except Exception:
                     pass
 
@@ -68,10 +76,45 @@ class PlaywrightSearcher:
                 break
             await asyncio.sleep(0.5)
 
+        if debug:
+            print(f"\n[DEBUG] All JSON responses intercepted ({len(all_json)} total):")
+            for url, body in all_json:
+                if isinstance(body, dict):
+                    top_keys = list(body.keys())[:10]
+                elif isinstance(body, list):
+                    top_keys = f"list[{len(body)}]"
+                else:
+                    top_keys = repr(body)[:80]
+                print(f"  {url}")
+                print(f"    keys/type: {top_keys}")
+            print(f"\n[DEBUG] Matched '{api_pattern}': {len(candidates)} response(s)")
+            for url, body in candidates:
+                looks_good = self._looks_like_records(body)
+                if isinstance(body, dict):
+                    top_keys = list(body.keys())[:10]
+                elif isinstance(body, list):
+                    top_keys = f"list[{len(body)}]"
+                else:
+                    top_keys = repr(body)[:80]
+                print(f"  {'✓' if looks_good else '✗'} {url}")
+                print(f"    keys: {top_keys}")
+                if not looks_good and isinstance(body, dict):
+                    for key in ("results", "data", "records", "items"):
+                        val = body.get(key)
+                        length = len(val) if isinstance(val, list) else "n/a"
+                        print(f"    [{key}] type={type(val).__name__} len={length}")
+
         # Pick the response that looks like a records payload (not facets/cookies/etc).
         for url, body in candidates:
             if self._looks_like_records(body):
                 return url, body
+
+        # Fallback: accept any candidate with a known list key, even if empty
+        for url, body in candidates:
+            if isinstance(body, dict):
+                for key in ("results", "data", "records", "items"):
+                    if isinstance(body.get(key), list):
+                        return url, body
 
         return None, None
 
