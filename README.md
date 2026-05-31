@@ -161,20 +161,20 @@ poetry run census-search browse --county Kerry --ded "Tralee Urban"
 
 ---
 
-### `search` — browse 1901 & 1911 directly (no 1926 anchor needed)
+### `1901` / `1911` — browse those censuses directly (no 1926 anchor needed)
 
 ```bash
-# Browse all Corrigans in Kilkenny across both years
-poetry run census-search search Corrigan --county Kilkenny
+# Browse all Corrigans in Tipperary in 1901
+poetry run census-search 1901 Corrigan --county Tipperary --max 300
 
-# Filter to a specific year
-poetry run census-search search Corrigan --first-name James --county Kilkenny --year 1911
+# Browse all Corrigans in Tipperary in 1911
+poetry run census-search 1911 Corrigan --county Tipperary --max 300
 
-# Sex filter, multiple counties
-poetry run census-search search Murphy --county "Kilkenny,Tipperary" --sex Female --year 1901
+# Filter by first name and sex
+poetry run census-search 1911 Corrigan --first-name James --county Kilkenny --sex Male
 
-# Increase result limit
-poetry run census-search search Corrigan --county Kilkenny --max 100
+# Multiple name variants, multiple counties
+poetry run census-search 1901 Murphy --first-name "Mary,Maria" --county "Kilkenny,Tipperary"
 ```
 
 | Argument / Flag | Short | Default | Description |
@@ -182,25 +182,20 @@ poetry run census-search search Corrigan --county Kilkenny --max 100
 | `surname` | | | Surname to search (optional positional argument) |
 | `--first-name` | `-f` | | First name — comma-separate variants (e.g. `Joe,Joseph`) |
 | `--county` | `-c` | | County or comma-separated counties |
-| `--year` | `-y` | both | Census year: `1901` or `1911` (omit for both) |
 | `--sex` | `-s` | | `Male` or `Female` — enforced client-side |
-| `--max` | `-n` | 30 | Max results per year |
+| `--max` | `-n` | 30 | Max results to return |
 
 #### Output example
 
 ```
-$ poetry run census-search search Corrigan --first-name James --county Kilkenny
+$ poetry run census-search 1911 Corrigan --county Tipperary --max 300
 
-📂 Browsing 1901 & 1911 census — James Corrigan
+📂 Browsing 1911 census — Corrigan
 
-1901: 24 record(s) — showing 30
- #   Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace
- 1   Corrigan   James         19  Male  Kilkenny  Lamogue            Kilmaganny
- ...
-
-1911: 18 record(s) — showing 18
- #   Surname    First Name   Age  Sex   County    Townland / Street  DED          Birthplace
- 1   Corrigan   James         29  Male  Kilkenny  Lamogue            Kilmaganny
+142 record(s) — showing 142
+ #   Surname    First Name   Age  Sex   County     Townland / Street  DED          Birthplace
+ 1   Corrigan   James         29  Male  Tipperary  Main Street        Clonmel
+ 2   Corrigan   Mary          24  Female Tipperary Barrack Street     Clonmel
  ...
 ```
 
