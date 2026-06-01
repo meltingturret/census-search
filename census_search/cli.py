@@ -385,7 +385,9 @@ async def _do_link(
             records=matched, search_url=raw.search_url,
         ))
 
-        if len(matched) == 1 or expand:
+        # Auto-show household on a single match, or when a service number confirms
+        # the identity (even if multiple 1926 records share the same name/age).
+        if len(matched) == 1 or expand or (service_number and matched):
             anchor = (matched or raw.records or [None])[0]
             if anchor and (anchor.townland_street or anchor.ded):
                 with console.status("Fetching household…"):
