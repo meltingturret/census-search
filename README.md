@@ -33,7 +33,7 @@ poetry run playwright install chromium
 
 ### `link` — search and link across all three censuses
 
-The primary command. Without `--birth-year`, returns all 1926 matches as a browse table. With `--birth-year`, age-filters results and links each match across 1911 and 1901 with a confidence score.
+The primary command. Without `--birth-year`, returns all 1926 matches as a browse table. With `--birth-year`, age-filters results and links each match across 1911 and 1901 with a confidence score. Household members are always shown and automatically linked back to 1911 & 1901.
 
 ```bash
 # Browse all male Corrigans in Kilkenny (no birth year)
@@ -47,9 +47,6 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 
 # Search for name variants (Joe, Joseph, Jos) in one pass
 poetry run census-search link Corrigan --first-name "Joe,Joseph,Jos" --birth-year 1917 --county Kilkenny --sex Male
-
-# Show household + link all members to 1911 & 1901
-poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
 ```
 
 | Flag | Short | Default | Description |
@@ -58,7 +55,7 @@ poetry run census-search link Corrigan --first-name James --birth-year 1882 --co
 | `--first-name` | `-f` | | First name — comma-separate variants (e.g. `Joe,Joseph,Jos`) |
 | `--county` | `-c` | | County or comma-separated counties (e.g. `Kilkenny` or `Kilkenny,Tipperary`) |
 | `--sex` | `-s` | | `Male` or `Female` — enforced client-side |
-| `--expand` | | false | Link all 1926 household members to 1911 & 1901 |
+| `--service-number` | | | Army service number — triggers TNA military records search |
 | `--age-tolerance` | | 3 | ±years for age matching across censuses |
 | `--max` | `-n` | 30 | Max results per census year |
 | `--no-headless` | | | Show browser window (useful for debugging) |
@@ -96,6 +93,46 @@ Household  Lamogue, Kilmaganny, Kilkenny
  3   Corrigan   Patrick        9  Male    Son           Kilkenny  Lamogue            Kilmaganny
 ```
 
+#### Military records
+
+Supply `--service-number` to search the TNA Discovery API for WO 372 medal cards, WO 97 service records, PIN 82 widow's pensions, and PIN 26 disability pension files.
+
+```
+$ poetry run census-search link Hennessy --first-name Patrick --birth-year 1888 --sex Male --service-number 3989
+
+Patrick Hennessy  (born ~1888 ±3yr)
+ Year  Surname    First Name   Age  Sex   County  Townland / Street  DED       Birthplace  Match
+ 1901  Hennessy   Patrick       13  M     Clare   Henry Street       Kilrush Urban  Co Clare  92%
+ 1911  Hennessy   Patrick       23  M     Clare   Hector Street      Kilrush Urban  Co Clare  95%
+ 1926  Hennessy   Patrick       38  Male  Clare   Aglish             Glenroe         —
+
+Military Records  TNA WO 372 / WO 97
+ #  Type        Reference        Regiment              Service No  Rank     Dates
+ 1  Medal card  WO 372/9/144384  Royal Irish Regiment  3989        Private  1914-1920
+
+Dependants & Pensions  TNA PIN 82 / PIN 26
+ #  Type          Reference    Regiment / Unit       Cause of Death / Disability  Dates
+ 1  Pension file  PIN 26/18129  Royal Irish Regiment  —                            1915-1947
+
+Household  Aglish, Glenroe, Clare
+ #  Surname    First Name  Age  Sex     Relationship  County  Townland  DED
+ 1  Hennessy   Cecilia      25  Female  Wife          Clare   Aglish    Glenroe
+ 2  Hennessy   Mary         79  Female  Mother        Clare   Aglish    Glenroe
+ 3  Hennessy   Katie        38  Female  Sister        Clare   Aglish    Glenroe
+```
+
+```
+$ poetry run census-search link Corrigan --first-name James --county Dublin --birth-year 1885 --sex Male --service-number 70925
+
+Military Records  TNA WO 372 / WO 97
+ #  Type        Reference       Regiment                      Service No  Rank    Dates
+ 1  Medal card  WO 372/5/31903  Royal Garrison Artillery Depot  70925      Gunner  1914-1920
+
+Dependants & Pensions  TNA PIN 82 / PIN 26
+ #  Type             Reference    Regiment / Unit           Cause of Death / Disability  Dates
+ 1  Widow's pension  PIN 82/38/2  Royal Garrison Artillery  Phthisis pulmonalis          [1915-1925]
+```
+
 **Multiple first name variants** — searches all variants and shows whichever name appears in the record:
 
 ```
@@ -121,38 +158,7 @@ Mary Purcell  (born ~1887 ±3yr)
  1926  Purcell  Mary         38  Female  Kilkenny  Balief Upper       Clomantagh                         —
 ```
 
-**Expand household** — links each member back to 1911 & 1901:
-
-```
-$ poetry run census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
-
-James Corrigan  (born ~1882 ±3yr)
- Year  Surname   First Name  Age  Sex   County    Townland / Street  DED          Birthplace  Match
- 1901  Corrigan  James        19  Male  Kilkenny  Lamogue            Kilmaganny                 91%
- 1911  Corrigan  James        29  Male  Kilkenny  Lamogue            Kilmaganny                 95%
- 1926  Corrigan  James        44  Male  Kilkenny  Lamogue            Kilmaganny                  —
-
-Household  Lamogue, Kilmaganny, Kilkenny
- #  Surname   First Name  Age  Sex     Relationship  County    Townland / Street  DED          Birthplace
- 1  Corrigan  Mary         39  Female  Wife          Kilkenny  Lamogue            Kilmaganny
- 2  Corrigan  Brigid       14  Female  Daughter      Kilkenny  Lamogue            Kilmaganny
- 3  Corrigan  Patrick       9  Male    Son           Kilkenny  Lamogue            Kilmaganny
-
-Mary Corrigan  (born ~1887 ±3yr)
- Year  Surname   First Name  Age  Sex     County    Townland / Street  DED          Birthplace  Match
- 1911  Corrigan  Mary         24  Female  Kilkenny  Lamogue            Kilmaganny                 87%
- 1901  Corrigan  Mary         14  Female  Kilkenny  Lamogue            Kilmaganny                 79%
-
-Patrick Corrigan  (born ~1917 ±3yr)
- Year  Surname   First Name  Age  Sex   County    Townland / Street  DED          Birthplace  Match
- 1926  Corrigan  Patrick       9  Male  Kilkenny  Lamogue            Kilmaganny                  —
-```
-
-When a household is found it is shown below as a separate table. `--expand` adds a further per-member cross-year table for each household member born before 1926.
-
-#### How `--expand` handles absent persons
-
-If the target person is not in 1926 (e.g. away on military service), the first surname match in the area is used as the household address anchor. Family members listed at that address are fetched and linked backwards.
+When a household is found it is shown below as a separate table, and each member is automatically linked back to 1911 & 1901.
 
 ---
 
@@ -261,7 +267,7 @@ poetry run census-search 1821 Murphy --county Meath
 ## How it works
 
 1. **Search 1926**: Playwright opens a Chromium browser, intercepts the underlying API call, and extracts structured results. Filtering by first name, sex, and age is done client-side.
-2. **Household**: When a single 1926 record is matched, all household members on the same PDF form (`aform_name`) are fetched automatically.
+2. **Household**: When a single 1926 record is matched, all household members on the same PDF form (`aform_name`) are fetched automatically. Household members are always linked back to 1911 & 1901 automatically.
 3. **Search 1911 & 1901**: Uses a direct REST API — no browser required. Results are filtered by surname, age window (`expected_age ± tolerance`), and county. Multiple counties can be searched and merged.
 4. **Phonetic matching**: Surname variants are caught using Soundex (e.g. Corrigan/Corigan, Purcell/Pursell) and fuzzy string similarity.
 5. **Confidence scoring**: Each candidate is scored across surname, first name, age consistency, county, sex, and relationship. The best match above the threshold is shown with a percentage.
@@ -273,5 +279,4 @@ poetry run census-search 1821 Murphy --county Meath
 - The 1901/1911 search uses a direct REST API — no browser needed for that step.
 - The 1821–1851 commands scrape the National Archives search page (plain HTML, no browser required). Coverage is sparse — many returns did not survive.
 - Age tolerance of ±3 years is the default — census ages were often approximate.
-- `--expand` links all household members who have a recorded age.
 - Census ages are not always accurate; the confidence score reflects how well each linked record fits across all available fields.

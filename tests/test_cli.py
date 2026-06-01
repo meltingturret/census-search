@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from typer.testing import CliRunner
 
 from census_search.cli import app
-from census_search.models import CensusRecord, SearchResult
+from census_search.models import CensusRecord, MilitaryRecord, SearchResult
 
 runner = CliRunner(env={"NO_COLOR": "1"})
 
@@ -766,6 +766,102 @@ class TestCensus1821Command:
             result = runner.invoke(app, ["1821", "Murphy"])
         assert result.exit_code == 0
         assert "No results" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Military search (--service-number)
+# ---------------------------------------------------------------------------
+
+def _setup_war_office_mock(records: list[MilitaryRecord] | None = None):
+    mock_wo = AsyncMock()
+    mock_wo.__aenter__ = AsyncMock(return_value=mock_wo)
+    mock_wo.__aexit__ = AsyncMock(return_value=False)
+    mock_wo.search = AsyncMock(return_value=records or [])
+    return mock_wo
+
+
+class TestMilitarySearch:
+    """Tests for --service-number military search integration in link command."""
+
+    def test_service_number_triggers_war_office_search(self):
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        mock_wo = _setup_war_office_mock()
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+            patch("census_search.cli.WarOfficeSearcher", return_value=mock_wo),
+        ):
+            result = runner.invoke(app, ["link", "Hennessy", "--first-name", "Patrick",
+                                         "--birth-year", "1888", "--service-number", "3989"])
+        assert result.exit_code == 0
+        mock_wo.search.assert_called_once()
+
+    def test_military_table_shown_when_records_found(self):
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        military_record = MilitaryRecord(
+            series="WO 372",
+            record_type="Medal card",
+            reference="WO 372/9/144384",
+            regiment="Royal Irish Regiment",
+            service_number="3989",
+            rank="Private",
+            dates="1914-1920",
+        )
+        mock_wo = _setup_war_office_mock([military_record])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+            patch("census_search.cli.WarOfficeSearcher", return_value=mock_wo),
+        ):
+            result = runner.invoke(app, ["link", "Hennessy", "--first-name", "Patrick",
+                                         "--birth-year", "1888", "--service-number", "3989"])
+        assert result.exit_code == 0
+        assert "Military Records" in result.output
+        assert "3989" in result.output
+
+    def test_pension_table_shown_when_pin26_found(self):
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        pension_record = MilitaryRecord(
+            series="PIN 26",
+            record_type="Pension file",
+            reference="PIN 26/18129",
+            regiment="Royal Irish Regiment",
+            dates="1915-1947",
+        )
+        mock_wo = _setup_war_office_mock([pension_record])
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+            patch("census_search.cli.WarOfficeSearcher", return_value=mock_wo),
+        ):
+            result = runner.invoke(app, ["link", "Hennessy", "--first-name", "Patrick",
+                                         "--birth-year", "1888", "--service-number", "3989"])
+        assert result.exit_code == 0
+        assert "Dependants & Pensions" in result.output
+        assert "PIN 26" in result.output
+
+    def test_no_service_number_skips_war_office_search(self):
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        mock_wo = _setup_war_office_mock()
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+            patch("census_search.cli.WarOfficeSearcher", return_value=mock_wo) as wo_cls,
+        ):
+            runner.invoke(app, ["link", "Corrigan", "--birth-year", "1880"])
+        wo_cls.assert_not_called()
+
+    def test_service_number_with_single_match_fetches_household(self):
+        mock_1926, mock_old = _setup_link_mocks([_corrigan_1926()])
+        mock_wo = _setup_war_office_mock()
+        with (
+            patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
+            patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
+            patch("census_search.cli.WarOfficeSearcher", return_value=mock_wo),
+        ):
+            runner.invoke(app, ["link", "Corrigan", "--birth-year", "1880",
+                                 "--service-number", "3989"])
+        assert mock_1926.search.call_count == 2
 
 
 class TestFragmentCommandsInHelp:
