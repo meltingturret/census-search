@@ -516,6 +516,8 @@ async def _do_link(
                     max_results=max_results,
                 )
             member_results = [r for r in res if r.census_year in years_to_search]
+            if not any(sr.records for sr in member_results):
+                continue
             # Build a 1926 anchor from the household member (carry relationship for scoring)
             anchor_m = CensusRecord(
                 census_year=1926,
@@ -526,13 +528,10 @@ async def _do_link(
                 county=member.county,
                 relationship=member.relationship,
             )
-            if born:
-                if tol_before == tol_after:
-                    born_label = f"  [dim](born ~{born} ±{tol_before}yr)[/dim]"
-                else:
-                    born_label = f"  [dim](born ~{born} -{tol_before}/+{tol_after}yr)[/dim]"
+            if tol_before == tol_after:
+                born_label = f"  [dim](born ~{born} ±{tol_before}yr)[/dim]"
             else:
-                born_label = ""
+                born_label = f"  [dim](born ~{born} -{tol_before}/+{tol_after}yr)[/dim]"
             console.print(f"\n[cyan]{member.full_name}[/cyan]{born_label}")
             console.print(_person_table(anchor_m, member_results, years_to_search))
 
