@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import re
 from importlib.metadata import version as _pkg_version
 from typing import Optional
 
@@ -22,10 +23,11 @@ from rich.console import Console
 from rich.table import Table
 
 from census_search.linker import best_scored_match
-from census_search.models import CensusRecord, SearchResult
+from census_search.models import CensusRecord, MilitaryRecord, SearchResult
 from census_search.searchers.census_1821_1851 import Census1821_1851Searcher
 from census_search.searchers.census_1901_1911 import Census1901_1911Searcher
 from census_search.searchers.census_1926 import Census1926Searcher
+from census_search.searchers.war_office import WarOfficeSearcher
 
 app = typer.Typer(
     name="census-search",
@@ -182,6 +184,85 @@ def _household_table(members: list[CensusRecord], location: str) -> Table:
 
 
 
+def _filter_military_by_birth_year(
+    records: list[MilitaryRecord], birth_year: int
+) -> list[MilitaryRecord]:
+    """Keep only records whose service dates are plausible for someone born in birth_year.
+
+    Eligible window: birth_year + 18 (earliest enlistment age) to birth_year + 60.
+    Records with unparseable dates are kept to avoid silently dropping real matches.
+    """
+    enlist_from = birth_year + 18
+    enlist_to = birth_year + 60
+    filtered = []
+    for r in records:
+        dates = r.dates or ""
+        # Extract up to two 4-digit years from the dates string, e.g. "1914-1920"
+        years = [int(y) for y in re.findall(r"\b(1[6-9]\d{2}|20\d{2})\b", dates)]
+        if not years:
+            filtered.append(r)  # can't determine — keep
+            continue
+        rec_start = min(years)
+        rec_end = max(years)
+        # Overlap check: service period must overlap with the person's eligible window
+        if rec_end >= enlist_from and rec_start <= enlist_to:
+            filtered.append(r)
+    return filtered
+
+
+SERVICE_SERIES = {"WO 372", "WO 97"}
+PENSION_SERIES = {"PIN 82", "PIN 26"}
+
+
+def _military_table(records: list[MilitaryRecord]) -> Table:
+    """Service and medal records (WO 372 / WO 97)."""
+    table = Table(box=box.SIMPLE_HEAD, show_lines=False)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Type", style="bold")
+    table.add_column("Reference")
+    table.add_column("Regiment")
+    table.add_column("Service No", justify="right")
+    table.add_column("Rank")
+    table.add_column("Dates")
+    table.add_column("TNA Record")
+    for i, r in enumerate(records, 1):
+        table.add_row(
+            str(i),
+            r.record_type or "—",
+            r.reference or "—",
+            r.regiment or "—",
+            r.service_number or "—",
+            r.rank or "—",
+            r.dates or "—",
+            r.detail_url or "—",
+        )
+    return table
+
+
+def _pension_table(records: list[MilitaryRecord]) -> Table:
+    """Dependant and pension records (PIN 82 / PIN 26)."""
+    table = Table(box=box.SIMPLE_HEAD, show_lines=False)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Type", style="bold")
+    table.add_column("Reference")
+    table.add_column("Regiment / Unit")
+    table.add_column("Cause of Death / Disability")
+    table.add_column("Dates")
+    table.add_column("TNA Record")
+    for i, r in enumerate(records, 1):
+        notes = r.cause_of_death or r.disability or "—"
+        table.add_row(
+            str(i),
+            r.record_type or "—",
+            r.reference or "—",
+            r.regiment or "—",
+            notes,
+            r.dates or "—",
+            r.detail_url or "—",
+        )
+    return table
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -200,6 +281,10 @@ def link(
     expand: bool = typer.Option(
         False, "--expand/--no-expand",
         help="Fetch all 1926 household members and link each to 1911 & 1901"
+    ),
+    service_number: str = typer.Option(
+        "", "--service-number", "-sn",
+        help="Army service number — triggers a TNA WO 372 / WO 97 military records search"
     ),
     headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headlessly"),
 ):
@@ -220,6 +305,9 @@ def link(
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
       census-search link Corrigan --first-name Joseph --birth-year 1917 --county Kilkenny --age-before 5 --age-after 10
+      census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny \
+        --sex Male --service-number 3102
+
     """
     asyncio.run(_do_link(
         surname=surname,
@@ -232,6 +320,7 @@ def link(
         age_after=age_after,
         max_results=max_results,
         expand=expand,
+        service_number=service_number,
         headless=headless,
     ))
 
@@ -247,6 +336,7 @@ async def _do_link(
     age_after: Optional[int],
     max_results: int,
     expand: bool,
+    service_number: str,
     headless: bool,
 ):
     # Resolve asymmetric tolerance: --age-before/--age-after override --age-tolerance
@@ -373,6 +463,30 @@ async def _do_link(
     console.print()
     console.print(f"[bold cyan]{name_label}[/bold cyan]{birth_label}")
     console.print(_person_table(anchor_1926, all_results, display_years))
+
+    # Military records — triggered only when a service number is supplied
+    if service_number:
+        async with WarOfficeSearcher() as wo:
+            with console.status("Searching military records…"):
+                mil_records = await wo.search(
+                    surname=surname,
+                    first_name=first_names[0] if first_names else "",
+                    service_number=service_number,
+                )
+        if birth_year:
+            mil_records = _filter_military_by_birth_year(mil_records, birth_year)
+        service_records = [r for r in mil_records if r.series in SERVICE_SERIES]
+        pension_records = [r for r in mil_records if r.series in PENSION_SERIES]
+        if service_records:
+            console.print("\n[bold]Military Records[/bold]  [dim]TNA WO 372 / WO 97[/dim]")
+            console.print(_military_table(service_records))
+        else:
+            console.print("\n[dim]No service records found in WO 372 / WO 97.[/dim]")
+        if pension_records:
+            console.print("\n[bold]Dependants & Pensions[/bold]  [dim]TNA PIN 82 / PIN 26[/dim]")
+            console.print(_pension_table(pension_records))
+        else:
+            console.print("[dim]No dependant or pension records found in PIN 82 / PIN 26.[/dim]")
 
     if not household_members:
         return
