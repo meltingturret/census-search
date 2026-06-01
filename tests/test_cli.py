@@ -60,7 +60,7 @@ class TestHelpOutput:
         assert "--first-name" in out
         assert "--county" in out
         assert "--sex" in out
-        assert "--expand" in out
+        assert "--service-number" in out
 
     def test_browse_help(self):
         result = runner.invoke(app, ["browse", "--help"])
@@ -252,7 +252,8 @@ class TestLinkCommand:
         # The synthetic age (44) should never appear — no real record was matched
         assert " 44 " not in result.output
 
-    def test_expand_links_household_members(self):
+    def test_household_members_always_linked(self):
+        """Household members are always linked to 1911/1901 — no --expand needed."""
         household = [
             CensusRecord(census_year=1926, surname="Corrigan", first_name="Mary", age=39,
                          sex="Female", county="Kilkenny", townland_street="Lamogue", ded="Kilmaganny"),
@@ -266,7 +267,7 @@ class TestLinkCommand:
             patch("census_search.cli.Census1926Searcher", return_value=mock_1926),
             patch("census_search.cli.Census1901_1911Searcher", return_value=mock_old),
         ):
-            result = runner.invoke(app, ["link", "Corrigan", "--birth-year", "1880", "--expand"])
+            result = runner.invoke(app, ["link", "Corrigan", "--birth-year", "1880"])
         assert result.exit_code == 0
         assert mock_old.search_both_years.call_count >= 1
 

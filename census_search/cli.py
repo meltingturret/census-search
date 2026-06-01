@@ -278,10 +278,6 @@ def link(
     age_before: Optional[int] = typer.Option(None, "--age-before", help="Years older the person may be"),
     age_after: Optional[int] = typer.Option(None, "--age-after", help="Years younger the person may be"),
     max_results: int = typer.Option(30, "--max", "-n", help="Max results per census year"),
-    expand: bool = typer.Option(
-        False, "--expand/--no-expand",
-        help="Fetch all 1926 household members and link each to 1911 & 1901"
-    ),
     service_number: str = typer.Option(
         "", "--service-number", "-sn",
         help="Army service number — triggers a TNA WO 372 / WO 97 military records search"
@@ -295,15 +291,14 @@ def link(
     only (no 1911/1901 linking). With it, records are age-filtered and linked
     across all three years.
 
-    When exactly one 1926 record is found, the full household is shown automatically.
-    Use --expand to also link each household member back to 1911 & 1901.
+    When a 1926 record is found, the full household is shown and each member
+    is automatically linked back to 1911 & 1901.
 
     Examples:
 
     \b
       census-search link Corrigan --county Kilkenny --sex Male
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --sex Male
-      census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny --expand
       census-search link Corrigan --first-name Joseph --birth-year 1917 --county Kilkenny --age-before 5 --age-after 10
       census-search link Corrigan --first-name James --birth-year 1882 --county Kilkenny \
         --sex Male --service-number 3102
@@ -319,7 +314,6 @@ def link(
         age_before=age_before,
         age_after=age_after,
         max_results=max_results,
-        expand=expand,
         service_number=service_number,
         headless=headless,
     ))
@@ -335,7 +329,6 @@ async def _do_link(
     age_before: Optional[int],
     age_after: Optional[int],
     max_results: int,
-    expand: bool,
     service_number: str,
     headless: bool,
 ):
@@ -385,9 +378,9 @@ async def _do_link(
             records=matched, search_url=raw.search_url,
         ))
 
-        # Auto-show household on a single match, or when a service number confirms
+        # Auto-show household on a single match or when a service number confirms
         # the identity (even if multiple 1926 records share the same name/age).
-        if len(matched) == 1 or expand or (service_number and matched):
+        if len(matched) == 1 or (service_number and matched):
             anchor = (matched or raw.records or [None])[0]
             if anchor and (anchor.townland_street or anchor.ded):
                 with console.status("Fetching household…"):
@@ -502,10 +495,7 @@ async def _do_link(
     console.print(f"\n[bold]Household[/bold]  [dim]{location}[/dim]")
     console.print(_household_table(household_members, location))
 
-    if not expand:
-        return
-
-    # Collect 1911/1901 results for each household member and print per-member trees
+    # Always link each household member back to 1911 & 1901
     async with Census1901_1911Searcher() as s:
         for i, member in enumerate(household_members):
             born = member.birth_year_estimate
