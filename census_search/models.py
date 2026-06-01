@@ -47,6 +47,22 @@ class SearchResult(BaseModel):
     search_url: str = ""
 
 
+class MilitaryRecord(BaseModel):
+    """A British Army service, medal, or pension record from TNA Discovery."""
+
+    reference: str = ""        # e.g. WO 372/5/31914
+    series: str = ""           # e.g. WO 372
+    record_type: str = ""      # "Medal card" | "Service record" | "Widow's pension" | "Pension file"
+    title: str = ""
+    regiment: str = ""
+    service_number: str = ""
+    rank: str = ""
+    cause_of_death: str = ""   # PIN 82 — cause of death leading to widow's pension
+    disability: str = ""       # PIN 26 — nature of disability
+    dates: str = ""
+    detail_url: Optional[str] = None
+
+
 class LinkedPerson(BaseModel):
     """A person linked across multiple census years."""
 

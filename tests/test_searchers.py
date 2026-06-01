@@ -13,6 +13,7 @@ from census_search.searchers.census_1926 import (
     _parse_record_from_row,
     _safe_int,
 )
+from census_search.searchers.war_office import _normalise_regiment
 
 # ---------------------------------------------------------------------------
 # URL builders
@@ -490,3 +491,21 @@ class TestParseRow1821_1851:
         r = _parse_row(cells, "", 1851)
         assert r.surname == "Murphy"
         assert r.age is None
+
+
+# ---------------------------------------------------------------------------
+# WarOfficeSearcher helpers
+# ---------------------------------------------------------------------------
+
+class TestWarOfficeSearcher:
+    def test_normalise_regiment_strips_depot(self):
+        assert _normalise_regiment("Royal Garrison Artillery Depot") == "Royal Garrison Artillery"
+
+    def test_normalise_regiment_strips_reserve(self):
+        assert _normalise_regiment("Royal Irish Regiment Reserve") == "Royal Irish Regiment"
+
+    def test_normalise_regiment_strips_tf(self):
+        assert _normalise_regiment("Royal Garrison Artillery T.F.") == "Royal Garrison Artillery"
+
+    def test_normalise_regiment_clean_name_unchanged(self):
+        assert _normalise_regiment("Royal Irish Regiment") == "Royal Irish Regiment"
