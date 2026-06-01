@@ -496,7 +496,7 @@ async def _do_link(
     console.print(_household_table(household_members, location))
 
     # Always link each household member back to 1911 & 1901
-    not_found: list[tuple[str, list[int]]] = []   # (name, years_searched) for members with no hits
+
     async with Census1901_1911Searcher() as s:
         for i, member in enumerate(household_members):
             born = member.birth_year_estimate
@@ -518,7 +518,6 @@ async def _do_link(
                 )
             member_results = [r for r in res if r.census_year in years_to_search]
             if not any(sr.records for sr in member_results):
-                not_found.append((member.full_name, years_to_search))
                 continue
             # Build a 1926 anchor from the household member (carry relationship for scoring)
             anchor_m = CensusRecord(
@@ -537,12 +536,6 @@ async def _do_link(
             console.print(f"\n[cyan]{member.full_name}[/cyan]{born_label}")
             console.print(_person_table(anchor_m, member_results, years_to_search))
 
-    if not_found:
-        lines = ", ".join(
-            f"{name} ({'/'.join(str(y) for y in yrs)})"
-            for name, yrs in not_found
-        )
-        console.print(f"\n[dim]No older records found for: {lines}[/dim]")
 
 
 @app.command()
