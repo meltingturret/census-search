@@ -10,6 +10,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.0] - 2026-06-01
+
+### Added
+- `--service-number` flag on `link` command — triggers TNA Discovery API search across WO 372 (WWI medal cards), WO 97 (service records), PIN 82 (widow's pensions), and PIN 26 (disability pension files)
+- `WarOfficeSearcher` — two-pass search: WO 372/WO 97 use name + service number; PIN 82/PIN 26 use the regiment extracted from pass 1 to avoid false matches
+- Regiment suffix normalisation — strips Depot, Reserve, T.F. etc. before querying pension series
+- Rate-limit resilience — 202-empty-body retries with exponential backoff; 1s inter-series delay
+- Two output tables: **Military Records** (WO 372/WO 97) and **Dependants & Pensions** (PIN 82/PIN 26)
+- `MilitaryRecord` Pydantic model
+
+### Changed
+- `--expand` flag removed — household members are always shown and automatically linked to 1911 & 1901
+- Household member cross-year tables suppressed when no older census records are found (silent skip)
+
+---
+
 ## [0.6.0] - 2026-05-31
 
 ### Added
